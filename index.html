@@ -1,0 +1,2325 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+  <meta name="theme-color" content="#0f172a">
+
+  <title>Travel Toolkit</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Noto Sans TC",
+        sans-serif;
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    header {
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: white;
+      padding:
+        calc(18px + env(safe-area-inset-top))
+        18px
+        18px;
+    }
+
+    .header-inner {
+      max-width: 900px;
+      margin: auto;
+    }
+
+    .title {
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      padding: 14px 14px 100px;
+    }
+
+    .status-bar {
+      background: white;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      font-size: 13px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #9ca3af;
+      flex-shrink: 0;
+    }
+
+    .status-dot.ok {
+      background: #22c55e;
+    }
+
+    .status-dot.error {
+      background: #ef4444;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .tab {
+      border: none;
+      border-radius: 12px;
+      background: #e5e7eb;
+      padding: 11px 6px;
+      font-size: 14px;
+      color: #374151;
+      font-weight: 700;
+    }
+
+    .tab.active {
+      background: #2563eb;
+      color: white;
+    }
+
+    .panel {
+      display: none;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      margin-bottom: 13px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #4b5563;
+      margin-bottom: 6px;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 11px;
+      padding: 11px 12px;
+      background: white;
+      color: #111827;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+    }
+
+    textarea {
+      min-height: 85px;
+      resize: vertical;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-weight: 800;
+      margin-top: 6px;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+    }
+
+    .btn-green {
+      background: #16a34a;
+      color: white;
+    }
+
+    .btn-orange {
+      background: #ea580c;
+      color: white;
+    }
+
+    .btn-gray {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .btn-red {
+      background: #dc2626;
+      color: white;
+    }
+
+    .btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .gps-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+
+    .record {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 13px;
+      margin-bottom: 10px;
+    }
+
+    .record-title {
+      font-weight: 800;
+      font-size: 16px;
+      margin-bottom: 5px;
+    }
+
+    .record-meta {
+      font-size: 13px;
+      color: #6b7280;
+      line-height: 1.65;
+    }
+
+    .record-note {
+      margin-top: 8px;
+      white-space: pre-wrap;
+      font-size: 14px;
+    }
+
+    .record-photo {
+      width: 100%;
+      max-height: 280px;
+      object-fit: cover;
+      border-radius: 12px;
+      margin-top: 10px;
+    }
+
+    .record-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .record-actions button {
+      border: none;
+      padding: 8px 12px;
+      border-radius: 9px;
+      background: #e5e7eb;
+      font-size: 13px;
+    }
+
+    .empty {
+      color: #9ca3af;
+      text-align: center;
+      padding: 30px 10px;
+      font-size: 14px;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .timezone {
+      display: inline-block;
+      background: #e0f2fe;
+      color: #075985;
+      padding: 3px 7px;
+      border-radius: 7px;
+      margin-left: 4px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .loading {
+      opacity: .6;
+      pointer-events: none;
+    }
+
+    .preview {
+      display: none;
+      width: 100%;
+      max-height: 280px;
+      object-fit: cover;
+      border-radius: 12px;
+      margin-top: 10px;
+    }
+
+    .message {
+      display: none;
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .message.success {
+      display: block;
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .message.error {
+      display: block;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    @media (max-width: 520px) {
+      .tabs {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="title">✈️ Travel Toolkit</div>
+    <div class="subtitle">
+      旅遊足跡・美食・GPS・旅程紀錄
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="status-bar">
+    <span id="statusDot" class="status-dot"></span>
+    <span id="statusText">尚未連線 Cloudflare</span>
+  </div>
+
+  <div id="message" class="message"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="footprint">
+      📍 足跡
+    </button>
+
+    <button class="tab" data-tab="food">
+      🍜 美食
+    </button>
+
+    <button class="tab" data-tab="trips">
+      🧳 旅程
+    </button>
+
+    <button class="tab" data-tab="records">
+      📚 紀錄
+    </button>
+  </div>
+
+
+  <!-- ========================= -->
+  <!-- 足跡 -->
+  <!-- ========================= -->
+
+  <section id="footprint" class="panel active">
+
+    <div class="card">
+
+      <div class="card-title">
+        📍 記錄目前位置
+      </div>
+
+      <div class="field">
+        <label>旅程</label>
+        <select id="footprintTrip"></select>
+      </div>
+
+      <div class="gps-box" id="footprintGps">
+        尚未取得 GPS
+      </div>
+
+      <button
+        class="btn btn-primary"
+        onclick="getLocation('footprint')">
+        📡 取得目前位置
+      </button>
+
+      <div class="field" style="margin-top:14px">
+        <label>地點名稱</label>
+        <input
+          id="footprintPlace"
+          placeholder="例如：太宰府天滿宮">
+      </div>
+
+      <div class="field">
+        <label>地址</label>
+        <input
+          id="footprintAddress"
+          placeholder="取得 GPS 後可自動帶入">
+      </div>
+
+      <div class="field">
+        <label>備註</label>
+        <textarea
+          id="footprintNote"
+          placeholder="例如：抵達、離開、拍照地點..."></textarea>
+      </div>
+
+      <button
+        class="btn btn-green"
+        onclick="saveFootprint()">
+        ✅ 儲存足跡
+      </button>
+
+    </div>
+
+  </section>
+
+
+  <!-- ========================= -->
+  <!-- 美食 -->
+  <!-- ========================= -->
+
+  <section id="food" class="panel">
+
+    <div class="card">
+
+      <div class="card-title">
+        🍜 新增美食紀錄
+      </div>
+
+      <div class="field">
+        <label>旅程</label>
+        <select id="foodTrip"></select>
+      </div>
+
+      <div class="field">
+        <label>店家名稱</label>
+        <input
+          id="foodShop"
+          placeholder="例如：一蘭拉麵 天神店">
+      </div>
+
+      <div class="gps-box" id="foodGps">
+        尚未取得 GPS
+      </div>
+
+      <button
+        class="btn btn-primary"
+        onclick="getLocation('food')">
+        📡 取得目前位置
+      </button>
+
+      <div class="field" style="margin-top:14px">
+        <label>地址</label>
+        <input
+          id="foodAddress"
+          placeholder="取得 GPS 後可自動帶入">
+      </div>
+
+      <div class="row">
+
+        <div class="field">
+          <label>金額</label>
+          <input
+            id="foodAmount"
+            type="number"
+            inputmode="decimal"
+            placeholder="0">
+        </div>
+
+        <div class="field">
+          <label>幣別</label>
+          <select id="foodCurrency">
+            <option value="TWD">TWD 台幣</option>
+            <option value="JPY">JPY 日幣</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div class="field">
+        <label>照片</label>
+
+        <input
+          id="foodPhoto"
+          type="file"
+          accept="image/*"
+          capture="environment">
+
+        <img
+          id="photoPreview"
+          class="preview"
+          alt="照片預覽">
+      </div>
+
+      <div class="field">
+        <label>備註</label>
+        <textarea
+          id="foodNote"
+          placeholder="餐點、感想、推薦菜色..."></textarea>
+      </div>
+
+      <button
+        class="btn btn-orange"
+        onclick="saveFood()">
+        🍽️ 儲存美食紀錄
+      </button>
+
+    </div>
+
+  </section>
+
+
+  <!-- ========================= -->
+  <!-- 旅程 -->
+  <!-- ========================= -->
+
+  <section id="trips" class="panel">
+
+    <div class="card">
+
+      <div class="card-title">
+        🧳 建立旅程
+      </div>
+
+      <div class="field">
+        <label>旅程名稱</label>
+        <input
+          id="tripName"
+          placeholder="例如：2026 東北賞楓 11 天">
+      </div>
+
+      <div class="row">
+
+        <div class="field">
+          <label>開始日期</label>
+          <input
+            id="tripStart"
+            type="date">
+        </div>
+
+        <div class="field">
+          <label>結束日期</label>
+          <input
+            id="tripEnd"
+            type="date">
+        </div>
+
+      </div>
+
+      <div class="field">
+        <label>備註</label>
+        <textarea
+          id="tripNote"
+          placeholder="航班、住宿或旅行備註"></textarea>
+      </div>
+
+      <button
+        class="btn btn-primary"
+        onclick="saveTrip()">
+        ＋ 建立旅程
+      </button>
+
+    </div>
+
+    <div class="card">
+
+      <div class="card-title">
+        我的旅程
+      </div>
+
+      <div id="tripList"></div>
+
+    </div>
+
+  </section>
+
+
+  <!-- ========================= -->
+  <!-- 所有紀錄 -->
+  <!-- ========================= -->
+
+  <section id="records" class="panel">
+
+    <div class="card">
+
+      <div class="card-title">
+        📚 歷史紀錄
+      </div>
+
+      <div class="field">
+        <label>顯示旅程</label>
+        <select
+          id="recordTrip"
+          onchange="renderRecords()">
+        </select>
+      </div>
+
+      <div class="field">
+        <label>紀錄種類</label>
+
+        <select
+          id="recordType"
+          onchange="renderRecords()">
+
+          <option value="all">
+            全部
+          </option>
+
+          <option value="footprint">
+            足跡
+          </option>
+
+          <option value="food">
+            美食
+          </option>
+
+        </select>
+      </div>
+
+      <div id="recordList"></div>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+        💾 資料備份
+      </div>
+
+      <button
+        class="btn btn-gray"
+        onclick="exportBackup()">
+        ⬇️ 匯出 JSON 備份
+      </button>
+
+      <div class="field" style="margin-top:16px">
+        <label>匯入備份</label>
+
+        <input
+          id="importFile"
+          type="file"
+          accept=".json,application/json">
+      </div>
+
+      <button
+        class="btn btn-gray"
+        onclick="importBackup()">
+        ⬆️ 匯入 JSON
+      </button>
+
+    </div>
+
+  </section>
+
+</div>
+
+
+<script>
+
+/* =====================================================
+   Cloudflare Worker 設定
+   =====================================================
+
+   等一下只需要把這行改成你的 Worker 網址。
+
+   例如：
+
+   const API_BASE =
+     "https://travel-api.xxxxx.workers.dev";
+
+===================================================== */
+
+const API_BASE =
+  "https://travel-api.michael-slai.workers.dev";
+
+
+/* =====================================================
+   App state
+===================================================== */
+
+let trips = [];
+let footprints = [];
+let foodRecords = [];
+
+let footprintLocation = null;
+let foodLocation = null;
+
+let foodPhotoData = null;
+
+
+/* =====================================================
+   Tabs
+===================================================== */
+
+document.querySelectorAll(".tab").forEach(btn => {
+
+  btn.addEventListener("click", () => {
+
+    document
+      .querySelectorAll(".tab")
+      .forEach(x => x.classList.remove("active"));
+
+    document
+      .querySelectorAll(".panel")
+      .forEach(x => x.classList.remove("active"));
+
+    btn.classList.add("active");
+
+    document
+      .getElementById(btn.dataset.tab)
+      .classList.add("active");
+
+    if (btn.dataset.tab === "records") {
+      loadAllData();
+    }
+
+  });
+
+});
+
+
+/* =====================================================
+   時區
+===================================================== */
+
+function getTimezoneInfo() {
+
+  const timezone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const date = new Date();
+
+  const offsetMinutes =
+    -date.getTimezoneOffset();
+
+  const sign =
+    offsetMinutes >= 0 ? "+" : "-";
+
+  const absMinutes =
+    Math.abs(offsetMinutes);
+
+  const hours =
+    Math.floor(absMinutes / 60);
+
+  const minutes =
+    absMinutes % 60;
+
+  const offset =
+    `GMT${sign}${hours}` +
+    (minutes ? `:${String(minutes).padStart(2,"0")}` : "");
+
+  return {
+    timezone,
+    offset
+  };
+}
+
+
+function localISOString() {
+
+  const now = new Date();
+
+  const pad = n =>
+    String(n).padStart(2,"0");
+
+  return (
+    now.getFullYear() + "-" +
+    pad(now.getMonth()+1) + "-" +
+    pad(now.getDate()) + "T" +
+    pad(now.getHours()) + ":" +
+    pad(now.getMinutes()) + ":" +
+    pad(now.getSeconds())
+  );
+
+}
+
+
+/* =====================================================
+   API
+===================================================== */
+
+async function api(path, options = {}) {
+
+  if (
+    API_BASE.includes("YOUR-WORKER-URL")
+  ) {
+
+    throw new Error(
+      "尚未設定 Cloudflare Worker 網址"
+    );
+
+  }
+
+  const response = await fetch(
+    API_BASE + path,
+    {
+      ...options,
+
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      }
+    }
+  );
+
+  let data = null;
+
+  try {
+    data = await response.json();
+  }
+  catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+
+    throw new Error(
+      data.error ||
+      `HTTP ${response.status}`
+    );
+
+  }
+
+  return data;
+
+}
+
+
+/* =====================================================
+   Worker 連線測試
+===================================================== */
+
+async function testConnection() {
+
+  const dot =
+    document.getElementById("statusDot");
+
+  const text =
+    document.getElementById("statusText");
+
+  if (
+    API_BASE.includes("YOUR-WORKER-URL")
+  ) {
+
+    text.textContent =
+      "等待設定 Cloudflare Worker 網址";
+
+    return;
+  }
+
+  try {
+
+    /*
+       這裡先使用 /api/trips
+       當作 API 連線測試。
+    */
+
+    await api("/api/trips");
+
+    dot.className =
+      "status-dot ok";
+
+    text.textContent =
+      "Cloudflare Worker / D1 已連線";
+
+  }
+  catch (err) {
+
+    dot.className =
+      "status-dot error";
+
+    text.textContent =
+      "API 連線失敗：" +
+      err.message;
+
+  }
+
+}
+
+
+/* =====================================================
+   GPS
+===================================================== */
+
+function getLocation(type) {
+
+  if (!navigator.geolocation) {
+
+    showMessage(
+      "這個瀏覽器不支援 GPS",
+      "error"
+    );
+
+    return;
+  }
+
+  const gpsBox =
+    document.getElementById(
+      type === "food"
+        ? "foodGps"
+        : "footprintGps"
+    );
+
+  gpsBox.textContent =
+    "正在取得 GPS...";
+
+  navigator.geolocation.getCurrentPosition(
+
+    async position => {
+
+      const location = {
+
+        latitude:
+          position.coords.latitude,
+
+        longitude:
+          position.coords.longitude,
+
+        accuracy:
+          position.coords.accuracy
+
+      };
+
+      if (type === "food") {
+        foodLocation = location;
+      }
+      else {
+        footprintLocation = location;
+      }
+
+      gpsBox.innerHTML =
+        `緯度：${location.latitude.toFixed(6)}<br>` +
+        `經度：${location.longitude.toFixed(6)}<br>` +
+        `精確度：約 ${Math.round(location.accuracy)} m`;
+
+      await reverseGeocode(
+        type,
+        location
+      );
+
+    },
+
+    error => {
+
+      let msg =
+        "無法取得 GPS";
+
+      if (error.code === 1)
+        msg = "請允許瀏覽器使用定位權限";
+
+      if (error.code === 2)
+        msg = "目前無法取得定位";
+
+      if (error.code === 3)
+        msg = "GPS 定位逾時";
+
+      gpsBox.textContent = msg;
+
+    },
+
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    }
+
+  );
+
+}
+
+
+/* =====================================================
+   GPS → 地址
+===================================================== */
+
+async function reverseGeocode(
+  type,
+  location
+) {
+
+  try {
+
+    const data =
+      await api(
+        `/api/reverse-geocode` +
+        `?lat=${location.latitude}` +
+        `&lon=${location.longitude}`
+      );
+
+    const address =
+      data.address ||
+      data.display_name ||
+      "";
+
+    const place =
+      data.place_name ||
+      data.name ||
+      "";
+
+    if (type === "food") {
+
+      if (address)
+        document.getElementById(
+          "foodAddress"
+        ).value = address;
+
+      if (
+        place &&
+        !document.getElementById(
+          "foodShop"
+        ).value
+      ) {
+
+        document.getElementById(
+          "foodShop"
+        ).value = place;
+
+      }
+
+    }
+    else {
+
+      if (address)
+        document.getElementById(
+          "footprintAddress"
+        ).value = address;
+
+      if (
+        place &&
+        !document.getElementById(
+          "footprintPlace"
+        ).value
+      ) {
+
+        document.getElementById(
+          "footprintPlace"
+        ).value = place;
+
+      }
+
+    }
+
+  }
+  catch (err) {
+
+    console.log(
+      "Reverse geocode unavailable:",
+      err
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   Trips
+===================================================== */
+
+async function loadTrips() {
+
+  try {
+
+    const result =
+      await api("/api/trips");
+
+    trips =
+      Array.isArray(result)
+        ? result
+        : result.data || result.trips || [];
+
+    renderTripSelectors();
+    renderTrips();
+
+  }
+  catch (err) {
+
+    console.error(err);
+
+  }
+
+}
+
+
+async function saveTrip() {
+
+  const name =
+    document
+      .getElementById("tripName")
+      .value
+      .trim();
+
+  if (!name) {
+
+    showMessage(
+      "請輸入旅程名稱",
+      "error"
+    );
+
+    return;
+  }
+
+  const body = {
+
+    name,
+
+    start_date:
+      document
+        .getElementById("tripStart")
+        .value || null,
+
+    end_date:
+      document
+        .getElementById("tripEnd")
+        .value || null,
+
+    note:
+      document
+        .getElementById("tripNote")
+        .value
+        .trim()
+
+  };
+
+  try {
+
+    await api(
+      "/api/trips",
+      {
+        method: "POST",
+        body: JSON.stringify(body)
+      }
+    );
+
+    document.getElementById(
+      "tripName"
+    ).value = "";
+
+    document.getElementById(
+      "tripStart"
+    ).value = "";
+
+    document.getElementById(
+      "tripEnd"
+    ).value = "";
+
+    document.getElementById(
+      "tripNote"
+    ).value = "";
+
+    await loadTrips();
+
+    showMessage(
+      "旅程建立成功"
+    );
+
+  }
+  catch (err) {
+
+    showMessage(
+      "建立旅程失敗：" +
+      err.message,
+      "error"
+    );
+
+  }
+
+}
+
+
+function renderTrips() {
+
+  const box =
+    document.getElementById(
+      "tripList"
+    );
+
+  if (!trips.length) {
+
+    box.innerHTML =
+      `<div class="empty">
+         尚未建立旅程
+       </div>`;
+
+    return;
+  }
+
+  box.innerHTML =
+    trips.map(t => {
+
+      const range =
+        [
+          t.start_date,
+          t.end_date
+        ]
+        .filter(Boolean)
+        .join(" ～ ");
+
+      return `
+        <div class="record">
+
+          <div class="record-title">
+            🧳 ${escapeHtml(t.name || "")}
+          </div>
+
+          <div class="record-meta">
+            ${range || "未設定日期"}
+          </div>
+
+          ${
+            t.note
+              ? `<div class="record-note">
+                   ${escapeHtml(t.note)}
+                 </div>`
+              : ""
+          }
+
+        </div>
+      `;
+
+    }).join("");
+
+}
+
+
+/* =====================================================
+   Trip selector
+===================================================== */
+
+function renderTripSelectors() {
+
+  const selectors = [
+    "footprintTrip",
+    "foodTrip",
+    "recordTrip"
+  ];
+
+  selectors.forEach(id => {
+
+    const select =
+      document.getElementById(id);
+
+    const old =
+      select.value;
+
+    let html = "";
+
+    if (id === "recordTrip") {
+
+      html +=
+        `<option value="all">
+           全部旅程
+         </option>`;
+
+    }
+    else {
+
+      html +=
+        `<option value="">
+           請選擇旅程
+         </option>`;
+
+    }
+
+    html +=
+      trips.map(t =>
+        `<option value="${t.id}">
+           ${escapeHtml(t.name)}
+         </option>`
+      ).join("");
+
+    select.innerHTML = html;
+
+    if (
+      [...select.options]
+        .some(x => x.value === old)
+    ) {
+      select.value = old;
+    }
+
+  });
+
+}
+
+
+/* =====================================================
+   Footprint
+===================================================== */
+
+async function saveFootprint() {
+
+  const tripId =
+    document
+      .getElementById("footprintTrip")
+      .value;
+
+  if (!tripId) {
+
+    showMessage(
+      "請先選擇旅程",
+      "error"
+    );
+
+    return;
+  }
+
+  if (!footprintLocation) {
+
+    showMessage(
+      "請先取得目前 GPS",
+      "error"
+    );
+
+    return;
+  }
+
+  const tz =
+    getTimezoneInfo();
+
+  const body = {
+
+    trip_id:
+      Number(tripId),
+
+    recorded_at:
+      localISOString(),
+
+    timezone:
+      tz.timezone,
+
+    timezone_offset:
+      tz.offset,
+
+    latitude:
+      footprintLocation.latitude,
+
+    longitude:
+      footprintLocation.longitude,
+
+    accuracy:
+      footprintLocation.accuracy,
+
+    place_name:
+      document
+        .getElementById(
+          "footprintPlace"
+        )
+        .value
+        .trim(),
+
+    address:
+      document
+        .getElementById(
+          "footprintAddress"
+        )
+        .value
+        .trim(),
+
+    note:
+      document
+        .getElementById(
+          "footprintNote"
+        )
+        .value
+        .trim()
+
+  };
+
+  try {
+
+    await api(
+      "/api/footprints",
+      {
+        method: "POST",
+        body: JSON.stringify(body)
+      }
+    );
+
+    showMessage(
+      "足跡已儲存"
+    );
+
+    document.getElementById(
+      "footprintPlace"
+    ).value = "";
+
+    document.getElementById(
+      "footprintAddress"
+    ).value = "";
+
+    document.getElementById(
+      "footprintNote"
+    ).value = "";
+
+    document.getElementById(
+      "footprintGps"
+    ).textContent =
+      "尚未取得 GPS";
+
+    footprintLocation = null;
+
+    await loadFootprints();
+
+  }
+  catch (err) {
+
+    showMessage(
+      "儲存足跡失敗：" +
+      err.message,
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   Food photo
+===================================================== */
+
+document
+  .getElementById("foodPhoto")
+  .addEventListener(
+    "change",
+    handlePhoto
+  );
+
+
+function handlePhoto(event) {
+
+  const file =
+    event.target.files[0];
+
+  if (!file) {
+    return;
+  }
+
+  /*
+     D1 不適合直接存大型照片。
+
+     現階段先壓縮照片後存 Base64。
+     後續我們會再改成 Cloudflare R2。
+  */
+
+  const reader =
+    new FileReader();
+
+  reader.onload = e => {
+
+    const img =
+      new Image();
+
+    img.onload = () => {
+
+      const maxSize = 1200;
+
+      let width =
+        img.width;
+
+      let height =
+        img.height;
+
+      if (
+        width > maxSize ||
+        height > maxSize
+      ) {
+
+        const ratio =
+          Math.min(
+            maxSize / width,
+            maxSize / height
+          );
+
+        width =
+          Math.round(width * ratio);
+
+        height =
+          Math.round(height * ratio);
+
+      }
+
+      const canvas =
+        document.createElement(
+          "canvas"
+        );
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx =
+        canvas.getContext("2d");
+
+      ctx.drawImage(
+        img,
+        0,
+        0,
+        width,
+        height
+      );
+
+      foodPhotoData =
+        canvas.toDataURL(
+          "image/jpeg",
+          0.72
+        );
+
+      const preview =
+        document.getElementById(
+          "photoPreview"
+        );
+
+      preview.src =
+        foodPhotoData;
+
+      preview.style.display =
+        "block";
+
+    };
+
+    img.src =
+      e.target.result;
+
+  };
+
+  reader.readAsDataURL(file);
+
+}
+
+
+/* =====================================================
+   Food
+===================================================== */
+
+async function saveFood() {
+
+  const tripId =
+    document
+      .getElementById("foodTrip")
+      .value;
+
+  const shop =
+    document
+      .getElementById("foodShop")
+      .value
+      .trim();
+
+  if (!tripId) {
+
+    showMessage(
+      "請先選擇旅程",
+      "error"
+    );
+
+    return;
+  }
+
+  if (!shop) {
+
+    showMessage(
+      "請輸入店家名稱",
+      "error"
+    );
+
+    return;
+  }
+
+  const tz =
+    getTimezoneInfo();
+
+  const amount =
+    document
+      .getElementById("foodAmount")
+      .value;
+
+  const body = {
+
+    trip_id:
+      Number(tripId),
+
+    recorded_at:
+      localISOString(),
+
+    timezone:
+      tz.timezone,
+
+    timezone_offset:
+      tz.offset,
+
+    shop_name:
+      shop,
+
+    latitude:
+      foodLocation
+        ? foodLocation.latitude
+        : null,
+
+    longitude:
+      foodLocation
+        ? foodLocation.longitude
+        : null,
+
+    accuracy:
+      foodLocation
+        ? foodLocation.accuracy
+        : null,
+
+    address:
+      document
+        .getElementById("foodAddress")
+        .value
+        .trim(),
+
+    amount:
+      amount
+        ? Number(amount)
+        : null,
+
+    currency:
+      document
+        .getElementById("foodCurrency")
+        .value,
+
+    photo:
+      foodPhotoData,
+
+    note:
+      document
+        .getElementById("foodNote")
+        .value
+        .trim()
+
+  };
+
+  try {
+
+    await api(
+      "/api/food-records",
+      {
+        method: "POST",
+        body: JSON.stringify(body)
+      }
+    );
+
+    showMessage(
+      "美食紀錄已儲存"
+    );
+
+    document.getElementById(
+      "foodShop"
+    ).value = "";
+
+    document.getElementById(
+      "foodAddress"
+    ).value = "";
+
+    document.getElementById(
+      "foodAmount"
+    ).value = "";
+
+    document.getElementById(
+      "foodNote"
+    ).value = "";
+
+    document.getElementById(
+      "foodPhoto"
+    ).value = "";
+
+    document.getElementById(
+      "photoPreview"
+    ).style.display = "none";
+
+    document.getElementById(
+      "foodGps"
+    ).textContent =
+      "尚未取得 GPS";
+
+    foodLocation = null;
+    foodPhotoData = null;
+
+    await loadFoodRecords();
+
+  }
+  catch (err) {
+
+    showMessage(
+      "儲存美食失敗：" +
+      err.message,
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   Load records
+===================================================== */
+
+async function loadFootprints() {
+
+  try {
+
+    const result =
+      await api(
+        "/api/footprints"
+      );
+
+    footprints =
+      Array.isArray(result)
+        ? result
+        : result.data ||
+          result.footprints ||
+          [];
+
+  }
+  catch (err) {
+
+    console.error(err);
+
+  }
+
+}
+
+
+async function loadFoodRecords() {
+
+  try {
+
+    const result =
+      await api(
+        "/api/food-records"
+      );
+
+    foodRecords =
+      Array.isArray(result)
+        ? result
+        : result.data ||
+          result.food_records ||
+          [];
+
+  }
+  catch (err) {
+
+    console.error(err);
+
+  }
+
+}
+
+
+async function loadAllData() {
+
+  await Promise.all([
+    loadTrips(),
+    loadFootprints(),
+    loadFoodRecords()
+  ]);
+
+  renderRecords();
+
+}
+
+
+/* =====================================================
+   Render records
+===================================================== */
+
+function renderRecords() {
+
+  const box =
+    document.getElementById(
+      "recordList"
+    );
+
+  const tripFilter =
+    document.getElementById(
+      "recordTrip"
+    ).value;
+
+  const typeFilter =
+    document.getElementById(
+      "recordType"
+    ).value;
+
+  let records = [];
+
+
+  if (
+    typeFilter === "all" ||
+    typeFilter === "footprint"
+  ) {
+
+    footprints.forEach(x => {
+
+      records.push({
+        ...x,
+        _type: "footprint"
+      });
+
+    });
+
+  }
+
+
+  if (
+    typeFilter === "all" ||
+    typeFilter === "food"
+  ) {
+
+    foodRecords.forEach(x => {
+
+      records.push({
+        ...x,
+        _type: "food"
+      });
+
+    });
+
+  }
+
+
+  if (tripFilter !== "all") {
+
+    records =
+      records.filter(
+        x =>
+          String(x.trip_id) ===
+          String(tripFilter)
+      );
+
+  }
+
+
+  records.sort((a,b) => {
+
+    const da =
+      new Date(
+        a.recorded_at ||
+        a.created_at ||
+        0
+      );
+
+    const db =
+      new Date(
+        b.recorded_at ||
+        b.created_at ||
+        0
+      );
+
+    return db - da;
+
+  });
+
+
+  if (!records.length) {
+
+    box.innerHTML =
+      `<div class="empty">
+         尚無紀錄
+       </div>`;
+
+    return;
+  }
+
+
+  box.innerHTML =
+    records.map(r => {
+
+      if (r._type === "footprint") {
+
+        return renderFootprintRecord(r);
+
+      }
+
+      return renderFoodRecord(r);
+
+    }).join("");
+
+}
+
+
+/* =====================================================
+   Footprint record
+===================================================== */
+
+function renderFootprintRecord(r) {
+
+  const trip =
+    trips.find(
+      t =>
+        String(t.id) ===
+        String(r.trip_id)
+    );
+
+  return `
+    <div class="record">
+
+      <div class="record-title">
+        📍 ${escapeHtml(
+          r.place_name ||
+          "位置紀錄"
+        )}
+      </div>
+
+      <div class="record-meta">
+
+        ${formatDate(r.recorded_at)}
+
+        ${
+          r.timezone_offset
+            ? `<span class="timezone">
+                 ${escapeHtml(
+                   r.timezone_offset
+                 )}
+               </span>`
+            : ""
+        }
+
+        <br>
+
+        🧳 ${
+          escapeHtml(
+            trip
+              ? trip.name
+              : "未分類"
+          )
+        }
+
+        ${
+          r.address
+            ? `<br>📌 ${escapeHtml(r.address)}`
+            : ""
+        }
+
+        ${
+          r.latitude != null
+            ? `<br>🌐 ${Number(r.latitude).toFixed(6)},
+                     ${Number(r.longitude).toFixed(6)}`
+            : ""
+        }
+
+      </div>
+
+      ${
+        r.note
+          ? `<div class="record-note">
+               ${escapeHtml(r.note)}
+             </div>`
+          : ""
+      }
+
+    </div>
+  `;
+
+}
+
+
+/* =====================================================
+   Food record
+===================================================== */
+
+function renderFoodRecord(r) {
+
+  const trip =
+    trips.find(
+      t =>
+        String(t.id) ===
+        String(r.trip_id)
+    );
+
+  return `
+    <div class="record">
+
+      <div class="record-title">
+        🍜 ${escapeHtml(
+          r.shop_name ||
+          "美食紀錄"
+        )}
+      </div>
+
+      <div class="record-meta">
+
+        ${formatDate(r.recorded_at)}
+
+        ${
+          r.timezone_offset
+            ? `<span class="timezone">
+                 ${escapeHtml(
+                   r.timezone_offset
+                 )}
+               </span>`
+            : ""
+        }
+
+        <br>
+
+        🧳 ${
+          escapeHtml(
+            trip
+              ? trip.name
+              : "未分類"
+          )
+        }
+
+        ${
+          r.address
+            ? `<br>📌 ${escapeHtml(r.address)}`
+            : ""
+        }
+
+        ${
+          r.amount != null
+            ? `<br>💰 ${escapeHtml(
+                 r.currency || ""
+               )} ${Number(r.amount).toLocaleString()}`
+            : ""
+        }
+
+      </div>
+
+      ${
+        r.note
+          ? `<div class="record-note">
+               ${escapeHtml(r.note)}
+             </div>`
+          : ""
+      }
+
+      ${
+        r.photo
+          ? `<img
+               class="record-photo"
+               src="${r.photo}"
+               alt="美食照片">
+            `
+          : ""
+      }
+
+    </div>
+  `;
+
+}
+
+
+/* =====================================================
+   Backup
+===================================================== */
+
+function exportBackup() {
+
+  const backup = {
+
+    version: 1,
+
+    exported_at:
+      new Date().toISOString(),
+
+    trips,
+
+    footprints,
+
+    food_records:
+      foodRecords
+
+  };
+
+  const blob =
+    new Blob(
+      [
+        JSON.stringify(
+          backup,
+          null,
+          2
+        )
+      ],
+      {
+        type:
+          "application/json"
+      }
+    );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const a =
+    document.createElement("a");
+
+  const date =
+    new Date()
+      .toISOString()
+      .slice(0,10);
+
+  a.href = url;
+
+  a.download =
+    `travel-toolkit-backup-${date}.json`;
+
+  a.click();
+
+  URL.revokeObjectURL(url);
+
+}
+
+
+/* =====================================================
+   Import
+===================================================== */
+
+async function importBackup() {
+
+  const input =
+    document.getElementById(
+      "importFile"
+    );
+
+  const file =
+    input.files[0];
+
+  if (!file) {
+
+    showMessage(
+      "請先選擇 JSON 備份檔",
+      "error"
+    );
+
+    return;
+  }
+
+  try {
+
+    const text =
+      await file.text();
+
+    const data =
+      JSON.parse(text);
+
+    /*
+       交給 Worker 處理匯入。
+    */
+
+    await api(
+      "/api/import",
+      {
+        method: "POST",
+        body:
+          JSON.stringify(data)
+      }
+    );
+
+    await loadAllData();
+
+    showMessage(
+      "備份匯入完成"
+    );
+
+    input.value = "";
+
+  }
+  catch (err) {
+
+    showMessage(
+      "匯入失敗：" +
+      err.message,
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   Utilities
+===================================================== */
+
+function showMessage(
+  text,
+  type = "success"
+) {
+
+  const box =
+    document.getElementById(
+      "message"
+    );
+
+  box.className =
+    `message ${type}`;
+
+  box.textContent =
+    text;
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+  setTimeout(() => {
+
+    box.className =
+      "message";
+
+  }, 3500);
+
+}
+
+
+function escapeHtml(value) {
+
+  return String(
+    value ?? ""
+  )
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+
+}
+
+
+function formatDate(value) {
+
+  if (!value)
+    return "";
+
+  const d =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      d.getTime()
+    )
+  ) {
+
+    return escapeHtml(value);
+
+  }
+
+  return d.toLocaleString(
+    "zh-TW",
+    {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }
+  );
+
+}
+
+
+/* =====================================================
+   Start
+===================================================== */
+
+async function init() {
+
+  const today =
+    new Date()
+      .toISOString()
+      .slice(0,10);
+
+  document.getElementById(
+    "tripStart"
+  ).value = today;
+
+  await testConnection();
+
+  if (
+    !API_BASE.includes(
+      "YOUR-WORKER-URL"
+    )
+  ) {
+
+    await loadAllData();
+
+  }
+}
+
+
+init();
+
+</script>
+
+</body>
+</html>
