@@ -1,1 +1,1304 @@
+/* =========================================================
+   Travel Toolkit V2.2.0 Modular
+   File: css/app.css
+   Modified: 2026-09-12
 
+   Changes:
+   - 從 V2.1.2 index.html 抽離 CSS
+   - 支援 Modular UI
+   - 支援 Footprint / Food / Expense / Trip / Sync
+   - 支援 Leaflet Map
+   - 支援 Nearby / Date Group / Sync Badge
+========================================================= */
+
+
+/* =========================================================
+   RESET
+========================================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+
+body {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans TC",
+    sans-serif;
+
+  background: #f5f6f8;
+  color: #222;
+  line-height: 1.5;
+}
+
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+
+button {
+  cursor: pointer;
+}
+
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+
+a {
+  color: inherit;
+}
+
+
+/* =========================================================
+   APP LAYOUT
+========================================================= */
+
+.app {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding-bottom: 80px;
+}
+
+
+.main {
+  padding: 14px;
+}
+
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+
+  border-bottom: 1px solid #e5e5e5;
+}
+
+
+.header-top {
+  padding: 14px 16px 8px;
+}
+
+
+.header-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+
+.app-title {
+  margin: 0;
+
+  font-size: 23px;
+  font-weight: 800;
+}
+
+
+.app-version {
+  flex: 0 0 auto;
+
+  padding: 4px 9px;
+
+  border-radius: 999px;
+
+  background: #eef3ff;
+  color: #3659a5;
+
+  font-size: 12px;
+  font-weight: 700;
+}
+
+
+.header-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  margin-top: 9px;
+}
+
+
+/* =========================================================
+   STATUS PILLS
+========================================================= */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+
+  min-height: 28px;
+  padding: 4px 9px;
+
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+
+.status-pill.success {
+  background: #e8f7ed;
+  color: #26733e;
+}
+
+
+.status-pill.warning {
+  background: #fff4d7;
+  color: #8a6400;
+}
+
+
+.status-pill.danger {
+  background: #ffe7e7;
+  color: #a62828;
+}
+
+
+.status-pill.info {
+  background: #e8f1ff;
+  color: #245f9e;
+}
+
+
+.status-pill.muted {
+  background: #eeeeee;
+  color: #666666;
+}
+
+
+/* =========================================================
+   NAV TABS
+========================================================= */
+
+.tab-nav {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+
+  border-top: 1px solid #eeeeee;
+  background: white;
+}
+
+
+.tab-button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+
+  padding: 10px 4px;
+
+  background: transparent;
+
+  color: #666;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+
+.tab-button.active {
+  color: #1f6feb;
+  border-bottom-color: #1f6feb;
+  background: #f4f8ff;
+}
+
+
+/* =========================================================
+   PANELS
+========================================================= */
+
+.tab-panel {
+  display: none;
+}
+
+
+.tab-panel.active {
+  display: block;
+}
+
+
+/* =========================================================
+   CARD
+========================================================= */
+
+.card {
+  margin-bottom: 14px;
+  padding: 15px;
+
+  border: 1px solid #e7e7e7;
+  border-radius: 16px;
+
+  background: white;
+
+  box-shadow:
+    0 3px 14px
+    rgba(0, 0, 0, 0.04);
+}
+
+
+.card-title {
+  margin: 0 0 12px;
+
+  font-size: 17px;
+  font-weight: 800;
+}
+
+
+.card-subtitle {
+  margin-top: -5px;
+  margin-bottom: 12px;
+
+  color: #777;
+  font-size: 12px;
+}
+
+
+/* =========================================================
+   FORM
+========================================================= */
+
+.form-group {
+  margin-bottom: 13px;
+}
+
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+
+label {
+  display: block;
+
+  margin-bottom: 5px;
+
+  color: #444;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+
+input,
+select,
+textarea {
+  width: 100%;
+
+  border: 1px solid #d8d8d8;
+  border-radius: 11px;
+
+  padding: 10px 11px;
+
+  background: white;
+  color: #222;
+
+  outline: none;
+}
+
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #6ba3e9;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(67, 133, 220, 0.12);
+}
+
+
+textarea {
+  min-height: 85px;
+  resize: vertical;
+}
+
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+
+.inline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+
+.inline-row > * {
+  flex: 1;
+}
+
+
+.hidden {
+  display: none !important;
+}
+
+
+/* =========================================================
+   CHECKBOX
+========================================================= */
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  margin-top: 8px;
+}
+
+
+.checkbox-row input[type="checkbox"] {
+  width: auto;
+  transform: scale(1.15);
+}
+
+
+.checkbox-row label {
+  margin: 0;
+  font-weight: 500;
+}
+
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.btn {
+  width: 100%;
+
+  border: 0;
+  border-radius: 11px;
+
+  padding: 11px 14px;
+
+  font-weight: 800;
+}
+
+
+.btn-primary {
+  background: #2563eb;
+  color: white;
+}
+
+
+.btn-green {
+  background: #2f855a;
+  color: white;
+}
+
+
+.btn-orange {
+  background: #d97706;
+  color: white;
+}
+
+
+.btn-gray {
+  border: 1px solid #d5d5d5;
+
+  background: #f5f5f5;
+  color: #333;
+
+  border-radius: 9px;
+
+  padding: 8px 12px;
+}
+
+
+.btn-soft-red {
+  border: 1px solid #f1c3c3;
+
+  background: #fff1f1;
+  color: #a72b2b;
+
+  border-radius: 9px;
+
+  padding: 8px 12px;
+}
+
+
+.button-row {
+  display: flex;
+  gap: 9px;
+}
+
+
+.button-row button {
+  flex: 1;
+}
+
+
+/* =========================================================
+   MAP
+========================================================= */
+
+#footprintMap {
+  width: 100%;
+  height: 320px;
+
+  margin-bottom: 14px;
+
+  border: 1px solid #dedede;
+  border-radius: 16px;
+
+  overflow: hidden;
+}
+
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+
+/* =========================================================
+   GPS
+========================================================= */
+
+.gps-status {
+  margin-top: 8px;
+
+  padding: 10px;
+
+  border-radius: 10px;
+
+  background: #f4f7fb;
+
+  color: #555;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+
+/* =========================================================
+   FOOTPRINT TYPE GRID
+========================================================= */
+
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+
+.type-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 72px;
+
+  border: 1px solid #dddddd;
+  border-radius: 12px;
+
+  background: white;
+
+  color: #555;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+
+.type-button.active {
+  border-color: #3979d2;
+
+  background: #edf5ff;
+  color: #245eaa;
+
+  box-shadow:
+    0 0 0 2px
+    rgba(57, 121, 210, 0.1);
+}
+
+
+.type-icon {
+  display: block;
+
+  margin-bottom: 4px;
+
+  font-size: 24px;
+}
+
+
+/* =========================================================
+   NEARBY
+========================================================= */
+
+.nearby-wrap {
+  margin-top: 12px;
+}
+
+
+.nearby-list {
+  display: grid;
+  gap: 7px;
+
+  margin-top: 7px;
+}
+
+
+.nearby-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+
+  width: 100%;
+
+  border: 1px solid #dfe4ea;
+  border-radius: 11px;
+
+  padding: 10px 11px;
+
+  background: white;
+
+  text-align: left;
+}
+
+
+.nearby-item:active {
+  background: #f1f6fb;
+}
+
+
+.nearby-name {
+  flex: 1;
+
+  font-weight: 700;
+}
+
+
+.nearby-meta {
+  flex: 0 0 auto;
+
+  color: #777;
+  font-size: 11px;
+}
+
+
+.status-text {
+  padding: 10px;
+
+  color: #777;
+  font-size: 12px;
+  text-align: center;
+}
+
+
+/* =========================================================
+   FILTERS
+========================================================= */
+
+.filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+
+  margin-bottom: 10px;
+}
+
+
+.search-input {
+  margin-bottom: 10px;
+}
+
+
+/* =========================================================
+   RECORD
+========================================================= */
+
+.record {
+  margin-bottom: 10px;
+  padding: 13px;
+
+  border: 1px solid #e6e6e6;
+  border-radius: 13px;
+
+  background: white;
+}
+
+
+.record-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+
+  font-size: 17px;
+  font-weight: 800;
+}
+
+
+.record-meta {
+  margin-top: 7px;
+
+  color: #666;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+
+.record-note {
+  margin-top: 9px;
+  padding: 10px;
+
+  border-radius: 10px;
+
+  background: #faf8f2;
+
+  font-size: 13px;
+
+  white-space: pre-wrap;
+}
+
+
+.record-actions {
+  display: flex;
+  gap: 8px;
+
+  margin-top: 12px;
+}
+
+
+.record-actions button {
+  flex: 1;
+}
+
+
+/* =========================================================
+   SYNC BADGE
+========================================================= */
+
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+
+  padding: 3px 7px;
+
+  border-radius: 999px;
+
+  font-size: 10px;
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+
+.sync-badge.synced {
+  background: #e8f7ed;
+  color: #287641;
+}
+
+
+.sync-badge.pending {
+  background: #fff3d2;
+  color: #856000;
+}
+
+
+.sync-badge.syncing {
+  background: #e5f0ff;
+  color: #2666aa;
+}
+
+
+.sync-badge.error {
+  background: #ffe3e3;
+  color: #a62d2d;
+}
+
+
+/* =========================================================
+   DATE GROUP
+========================================================= */
+
+.date-group {
+  margin-bottom: 12px;
+}
+
+
+.date-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  width: 100%;
+
+  border: 1px solid #e3e3e3;
+  border-radius: 13px;
+
+  padding: 11px 13px;
+
+  background: white;
+
+  text-align: left;
+}
+
+
+.date-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+
+.date-summary {
+  margin-top: 2px;
+
+  color: #777;
+  font-size: 11px;
+}
+
+
+.date-toggle {
+  color: #777;
+
+  transition:
+    transform 0.2s;
+}
+
+
+.date-records {
+  margin-top: 8px;
+}
+
+
+.date-group.collapsed
+.date-records {
+  display: none;
+}
+
+
+.date-group.collapsed
+.date-toggle {
+  transform:
+    rotate(-90deg);
+}
+
+
+/* =========================================================
+   EMPTY
+========================================================= */
+
+.empty {
+  padding: 28px 10px;
+
+  color: #999;
+
+  text-align: center;
+}
+
+
+/* =========================================================
+   STARS
+========================================================= */
+
+.rating-row {
+  display: flex;
+  gap: 4px;
+}
+
+
+.rating-star {
+  border: 0;
+  background: transparent;
+
+  padding: 0;
+
+  color: #c7c7c7;
+
+  font-size: 30px;
+}
+
+
+.rating-star.active {
+  color: #f2ae00;
+}
+
+
+/* =========================================================
+   SYNC PAGE
+========================================================= */
+
+.sync-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+
+.sync-setting-title {
+  font-weight: 800;
+}
+
+
+.sync-setting-desc {
+  margin-top: 4px;
+
+  color: #777;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+
+/* =========================================================
+   TOGGLE
+========================================================= */
+
+.toggle {
+  position: relative;
+
+  flex: 0 0 auto;
+
+  width: 52px;
+  height: 30px;
+}
+
+
+.toggle input {
+  position: absolute;
+
+  width: 1px;
+  height: 1px;
+
+  opacity: 0;
+}
+
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+
+  border-radius: 999px;
+
+  background: #cccccc;
+
+  transition:
+    background 0.2s;
+}
+
+
+.toggle-slider::after {
+  content: "";
+
+  position: absolute;
+
+  top: 3px;
+  left: 3px;
+
+  width: 24px;
+  height: 24px;
+
+  border-radius: 50%;
+
+  background: white;
+
+  box-shadow:
+    0 1px 5px
+    rgba(0, 0, 0, 0.25);
+
+  transition:
+    transform 0.2s;
+}
+
+
+.toggle input:checked +
+.toggle-slider {
+  background: #2f855a;
+}
+
+
+.toggle input:checked +
+.toggle-slider::after {
+  transform:
+    translateX(22px);
+}
+
+
+/* =========================================================
+   SYNC COUNTS
+========================================================= */
+
+.sync-count-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+
+.sync-count-box {
+  padding: 12px 6px;
+
+  border-radius: 11px;
+
+  background: #f7f8fa;
+
+  text-align: center;
+}
+
+
+.sync-count-value {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+
+.sync-count-label {
+  margin-top: 3px;
+
+  color: #777;
+  font-size: 10px;
+}
+
+
+/* =========================================================
+   LOCAL COUNT
+========================================================= */
+
+.local-count-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+
+.local-count-box {
+  padding: 11px 6px;
+
+  border-radius: 11px;
+
+  background: #f5f7fb;
+
+  text-align: center;
+}
+
+
+.local-count-value {
+  font-size: 19px;
+  font-weight: 800;
+}
+
+
+.local-count-label {
+  margin-top: 2px;
+
+  color: #777;
+  font-size: 10px;
+}
+
+
+/* =========================================================
+   FILE IMPORT
+========================================================= */
+
+.file-input {
+  width: 100%;
+
+  padding: 9px;
+
+  border: 1px dashed #bbbbbb;
+  border-radius: 11px;
+
+  background: #fafafa;
+}
+
+
+/* =========================================================
+   STARTUP ERROR
+========================================================= */
+
+.startup-error {
+  display: none;
+
+  margin: 14px;
+  padding: 12px;
+
+  border: 1px solid #e9a6a6;
+  border-radius: 11px;
+
+  background: #fff0f0;
+
+  color: #a12222;
+
+  font-size: 13px;
+}
+
+
+/* =========================================================
+   TOAST
+========================================================= */
+
+.toast {
+  position: fixed;
+
+  left: 50%;
+  bottom: 24px;
+
+  z-index: 5000;
+
+  transform:
+    translateX(-50%)
+    translateY(20px);
+
+  max-width: calc(100vw - 40px);
+
+  padding: 10px 16px;
+
+  border-radius: 999px;
+
+  background:
+    rgba(30, 30, 30, 0.94);
+
+  color: white;
+
+  font-size: 13px;
+  font-weight: 700;
+
+  opacity: 0;
+
+  pointer-events: none;
+
+  transition:
+    all 0.2s;
+}
+
+
+.toast.show {
+  opacity: 1;
+
+  transform:
+    translateX(-50%)
+    translateY(0);
+}
+
+
+/* =========================================================
+   MODAL
+========================================================= */
+
+.modal {
+  display: none;
+
+  position: fixed;
+  inset: 0;
+
+  z-index: 6000;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background:
+    rgba(0, 0, 0, 0.45);
+}
+
+
+.modal.show {
+  display: flex;
+}
+
+
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+
+  padding: 18px;
+
+  border-radius: 16px;
+
+  background: white;
+
+  box-shadow:
+    0 14px 40px
+    rgba(0, 0, 0, 0.2);
+}
+
+
+.modal-title {
+  margin-bottom: 9px;
+
+  font-size: 18px;
+  font-weight: 800;
+}
+
+
+.modal-message {
+  color: #555;
+
+  font-size: 13px;
+  line-height: 1.7;
+
+  white-space: pre-wrap;
+}
+
+
+.modal-actions {
+  display: flex;
+  gap: 9px;
+
+  margin-top: 16px;
+}
+
+
+.modal-actions button {
+  flex: 1;
+}
+
+
+/* =========================================================
+   FOOTER INFO
+========================================================= */
+
+.app-info {
+  margin-top: 15px;
+
+  color: #999;
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (
+  max-width: 600px
+) {
+
+  .main {
+    padding: 10px;
+  }
+
+
+  .header-top {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+
+  .app-title {
+    font-size: 20px;
+  }
+
+
+  .tab-button {
+    padding: 9px 2px;
+
+    font-size: 11px;
+  }
+
+
+  #footprintMap {
+    height: 280px;
+  }
+
+
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+
+  .type-grid {
+    grid-template-columns:
+      repeat(4, 1fr);
+  }
+
+
+  .type-button {
+    min-height: 65px;
+
+    padding: 5px;
+
+    font-size: 11px;
+  }
+
+
+  .type-icon {
+    font-size: 21px;
+  }
+
+
+  .sync-count-grid,
+  .local-count-grid {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+
+  .nearby-item {
+    align-items: flex-start;
+    flex-direction: column;
+
+    gap: 2px;
+  }
+
+
+  .nearby-meta {
+    flex: none;
+  }
+
+}
+
+
+/* =========================================================
+   VERY SMALL MOBILE
+========================================================= */
+
+@media (
+  max-width: 380px
+) {
+
+  .header-status {
+    gap: 4px;
+  }
+
+
+  .status-pill {
+    font-size: 10px;
+  }
+
+
+  .type-grid {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+}
