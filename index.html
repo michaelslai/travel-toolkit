@@ -670,16 +670,460 @@
          FOOD PANEL
     ==================================================== -->
 
+    <!-- ===================================================
+         FOOD PANEL
+         Travel Toolkit V2.2.3
+         Food Feature Parity
+         
+         Changes:
+         - Food V2.4.1 單機版功能回補
+         - 美食統計
+         - 搜尋 / 餐別 / 分類 / 推薦篩選
+         - GPS + Nearby 店家
+         - Local Photo 選取 / 預覽
+         - 保留 Local-first + D1 Sync
+         - 保留 Food → Expense
+    ==================================================== -->
+
     <section
       id="panel-food"
       class="tab-panel"
     >
 
+      <!-- =================================================
+           FOOD SUMMARY
+      ================================================== -->
+
+      <div class="card food-summary-card">
+
+        <h2 class="card-title">
+          📊 美食紀錄統計
+        </h2>
+
+
+        <div class="food-summary-grid">
+
+          <div class="food-summary-item">
+
+            <div class="food-summary-label">
+              紀錄數
+            </div>
+
+            <div
+              id="foodSummaryCount"
+              class="food-summary-value"
+            >
+              0
+            </div>
+
+          </div>
+
+
+          <div class="food-summary-item">
+
+            <div class="food-summary-label">
+              平均評分
+            </div>
+
+            <div
+              id="foodSummaryRating"
+              class="food-summary-value food-summary-rating"
+            >
+              -
+            </div>
+
+          </div>
+
+
+          <div class="food-summary-item">
+
+            <div class="food-summary-label">
+              台幣總額
+            </div>
+
+            <div
+              id="foodSummaryTWD"
+              class="food-summary-value"
+            >
+              NT$0
+            </div>
+
+          </div>
+
+
+          <div class="food-summary-item">
+
+            <div class="food-summary-label">
+              日幣總額
+            </div>
+
+            <div
+              id="foodSummaryJPY"
+              class="food-summary-value"
+            >
+              ¥0
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- =================================================
+           FOOD SEARCH / FILTER
+      ================================================== -->
+
+      <div class="card food-search-card">
+
+        <h2 class="card-title">
+          🔎 美食搜尋
+        </h2>
+
+
+        <div class="food-search-wrap">
+
+          <span class="food-search-icon">
+            🔍
+          </span>
+
+
+          <input
+            type="search"
+            id="foodSearch"
+            class="food-search-input"
+            placeholder="搜尋店家、餐點、分類、推薦、地址、備註..."
+            autocomplete="off"
+          >
+
+        </div>
+
+
+        <div
+          id="foodSearchResultInfo"
+          class="food-search-result-info"
+        >
+          顯示全部紀錄
+        </div>
+
+
+        <div
+          id="foodFilterStatus"
+          class="food-filter-status"
+        >
+          目前沒有啟用篩選
+        </div>
+
+
+        <button
+          type="button"
+          id="foodFilterToggleButton"
+          class="food-filter-toggle"
+        >
+          ☰ 展開篩選
+        </button>
+
+
+        <!-- ===============================================
+             FILTER PANEL
+        ================================================ -->
+
+        <div
+          id="foodFilterPanel"
+          class="food-filter-panel"
+        >
+
+          <!-- Meal -->
+
+          <div class="food-filter-section">
+
+            <div class="food-filter-title">
+              🕐 餐別
+            </div>
+
+
+            <div
+              id="foodMealFilterChips"
+              class="food-filter-chips"
+            >
+
+              <button
+                type="button"
+                class="food-filter-chip active"
+                data-food-filter-type="meal"
+                data-food-filter-value=""
+              >
+                全部
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="meal"
+                data-food-filter-value="早餐"
+              >
+                早餐
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="meal"
+                data-food-filter-value="午餐"
+              >
+                午餐
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="meal"
+                data-food-filter-value="下午茶"
+              >
+                下午茶
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="meal"
+                data-food-filter-value="晚餐"
+              >
+                晚餐
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="meal"
+                data-food-filter-value="宵夜"
+              >
+                宵夜
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="meal"
+                data-food-filter-value="其他"
+              >
+                其他
+              </button>
+
+            </div>
+
+          </div>
+
+
+          <!-- Category -->
+
+          <div class="food-filter-section">
+
+            <div class="food-filter-title">
+              🏷️ 分類
+            </div>
+
+
+            <div
+              id="foodCategoryFilterChips"
+              class="food-filter-chips"
+            >
+
+              <button
+                type="button"
+                class="food-filter-chip active"
+                data-food-filter-type="category"
+                data-food-filter-value=""
+              >
+                全部
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="主食"
+              >
+                主食
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="麵飯"
+              >
+                麵飯
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="燒肉"
+              >
+                燒肉
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="火鍋"
+              >
+                火鍋
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="海鮮"
+              >
+                海鮮
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="小吃"
+              >
+                小吃
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="甜點"
+              >
+                甜點
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="飲料"
+              >
+                飲料
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="咖啡"
+              >
+                咖啡
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="酒類"
+              >
+                酒類
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="便利商店"
+              >
+                便利商店
+              </button>
+
+
+              <button
+                type="button"
+                class="food-filter-chip"
+                data-food-filter-type="category"
+                data-food-filter-value="其他"
+              >
+                其他
+              </button>
+
+            </div>
+
+          </div>
+
+
+          <!-- Recommend -->
+
+          <div class="food-filter-section">
+
+            <div class="food-filter-title">
+              ⭐ 推薦
+            </div>
+
+
+            <div class="food-filter-chips">
+
+              <button
+                type="button"
+                id="foodRecommendFilterButton"
+                class="food-filter-chip recommend"
+              >
+                只看推薦 / 值得再訪
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <button
+          type="button"
+          id="foodClearFilterButton"
+          class="food-filter-clear"
+        >
+          ✕ 清除搜尋與所有篩選
+        </button>
+
+      </div>
+
+
+      <!-- =================================================
+           ADD / EDIT FOOD
+      ================================================== -->
+
       <div class="card">
 
         <h2 class="card-title">
-          🍜 美食紀錄
+          🍜 新增美食紀錄
         </h2>
+
+
+        <div
+          id="foodEditIndicator"
+          class="food-edit-indicator"
+        >
+          ✏️ 目前正在編輯既有紀錄
+        </div>
 
 
         <input
@@ -688,11 +1132,14 @@
         >
 
 
+        <!-- Trip -->
+
         <div class="form-group">
 
           <label for="foodTrip">
-            旅程
+            🧳 旅程
           </label>
+
 
           <select id="foodTrip">
 
@@ -705,12 +1152,14 @@
         </div>
 
 
+        <!-- Date / Time -->
+
         <div class="grid-2">
 
           <div class="form-group">
 
             <label for="foodDate">
-              日期
+              📅 日期
             </label>
 
             <input
@@ -724,162 +1173,40 @@
           <div class="form-group">
 
             <label for="foodTime">
-              時間
+              🕒 時間
             </label>
 
             <input
               type="time"
               id="foodTime"
             >
+
           </div>
 
         </div>
 
 
+        <div
+          id="foodTimezoneText"
+          class="timezone-text"
+        ></div>
+
+
+        <!-- GPS -->
+
         <div class="form-group">
 
-          <label for="foodMealType">
-            餐別
+          <label>
+            📍 GPS / 地址 / 附近店家
           </label>
 
-          <select id="foodMealType">
-
-            <option value="">
-              未分類
-            </option>
-
-            <option value="早餐">
-              早餐
-            </option>
-
-            <option value="午餐">
-              午餐
-            </option>
-
-            <option value="下午茶">
-              下午茶
-            </option>
-
-            <option value="晚餐">
-              晚餐
-            </option>
-
-            <option value="宵夜">
-              宵夜
-            </option>
-
-            <option value="其他">
-              其他
-            </option>
-
-          </select>
-
-        </div>
-
-
-        <div class="form-group">
-
-          <label for="foodCategory">
-            美食分類
-          </label>
-
-          <select id="foodCategory">
-
-            <option value="">
-              未分類
-            </option>
-
-            <option value="主食">
-              主食
-            </option>
-
-            <option value="麵飯">
-              麵飯
-            </option>
-
-            <option value="燒肉">
-              燒肉
-            </option>
-
-            <option value="火鍋">
-              火鍋
-            </option>
-
-            <option value="海鮮">
-              海鮮
-            </option>
-
-            <option value="小吃">
-              小吃
-            </option>
-
-            <option value="甜點">
-              甜點
-            </option>
-
-            <option value="飲料">
-              飲料
-            </option>
-
-            <option value="咖啡">
-              咖啡
-            </option>
-
-            <option value="酒類">
-              酒類
-            </option>
-
-            <option value="便利商店">
-              便利商店
-            </option>
-
-            <option value="其他">
-              其他
-            </option>
-
-          </select>
-
-        </div>
-
-
-        <div class="form-group">
-
-          <label for="foodShopName">
-            店家名稱
-          </label>
-
-          <input
-            type="text"
-            id="foodShopName"
-            placeholder="例如：一蘭拉麵"
-          >
-
-        </div>
-
-
-        <div class="form-group">
-
-          <label for="foodName">
-            餐點名稱
-          </label>
-
-          <input
-            type="text"
-            id="foodName"
-            placeholder="例如：天然豚骨拉麵"
-          >
-
-        </div>
-
-
-        <div class="form-group">
 
           <button
             type="button"
             id="foodGpsButton"
             class="btn btn-primary"
           >
-            📍 取得目前位置
+            📍 取得目前位置＋搜尋附近店家
           </button>
 
 
@@ -893,12 +1220,271 @@
         </div>
 
 
-        <!-- Rating -->
+        <!-- Nearby -->
+
+        <div
+          id="foodNearbyWrap"
+          class="food-nearby-wrap"
+        >
+
+          <div class="food-nearby-title">
+            🏪 附近店家
+          </div>
+
+
+          <div class="food-nearby-note">
+            依 GPS 距離排序，點選店家即可自動填入店名
+          </div>
+
+
+          <div
+            id="foodNearbyList"
+            class="food-nearby-list"
+          ></div>
+
+        </div>
+
+        <!-- =================================================
+             SHOP / FOOD NAME
+        ================================================== -->
+
+        <div class="form-group">
+
+          <label for="foodShopName">
+            🏪 店家名稱
+          </label>
+
+          <input
+            type="text"
+            id="foodShopName"
+            placeholder="例如：一蘭拉麵 天神店"
+          >
+
+          <div
+            id="foodSelectedShop"
+            class="food-selected-shop"
+          ></div>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label for="foodName">
+            🍽️ 吃了什麼
+          </label>
+
+          <input
+            type="text"
+            id="foodName"
+            placeholder="例如：天然豚骨拉麵、半熟蛋"
+          >
+
+        </div>
+
+
+        <!-- =================================================
+             MEAL / CATEGORY
+        ================================================== -->
+
+        <div class="grid-2">
+
+          <div class="form-group">
+
+            <label for="foodMealType">
+              🕐 餐別
+            </label>
+
+            <select id="foodMealType">
+
+              <option value="">
+                未分類
+              </option>
+
+              <option value="早餐">
+                早餐
+              </option>
+
+              <option value="午餐">
+                午餐
+              </option>
+
+              <option value="下午茶">
+                下午茶
+              </option>
+
+              <option value="晚餐">
+                晚餐
+              </option>
+
+              <option value="宵夜">
+                宵夜
+              </option>
+
+              <option value="其他">
+                其他
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="foodCategory">
+              🏷️ 分類
+            </label>
+
+            <select id="foodCategory">
+
+              <option value="">
+                未分類
+              </option>
+
+              <option value="主食">
+                主食
+              </option>
+
+              <option value="麵飯">
+                麵飯
+              </option>
+
+              <option value="燒肉">
+                燒肉
+              </option>
+
+              <option value="火鍋">
+                火鍋
+              </option>
+
+              <option value="海鮮">
+                海鮮
+              </option>
+
+              <option value="小吃">
+                小吃
+              </option>
+
+              <option value="甜點">
+                甜點
+              </option>
+
+              <option value="飲料">
+                飲料
+              </option>
+
+              <option value="咖啡">
+                咖啡
+              </option>
+
+              <option value="酒類">
+                酒類
+              </option>
+
+              <option value="便利商店">
+                便利商店
+              </option>
+
+              <option value="其他">
+                其他
+              </option>
+
+            </select>
+
+          </div>
+
+        </div>
+
+
+        <!-- =================================================
+             RECOMMEND
+        ================================================== -->
+
+        <div class="checkbox-row food-recommend-row">
+
+          <input
+            type="checkbox"
+            id="foodRecommended"
+          >
+
+          <label for="foodRecommended">
+            ⭐ 值得再訪 / 推薦
+          </label>
+
+        </div>
+
+
+        <!-- =================================================
+             MONEY
+        ================================================== -->
+
+        <div
+          class="grid-2"
+          style="margin-top:13px;"
+        >
+
+          <div class="form-group">
+
+            <label for="foodCurrency">
+              💱 幣別
+            </label>
+
+            <select id="foodCurrency">
+
+              <option value="TWD">
+                TWD
+              </option>
+
+              <option value="JPY">
+                JPY
+              </option>
+
+              <option value="CNY">
+                CNY
+              </option>
+
+              <option value="USD">
+                USD
+              </option>
+
+              <option value="KRW">
+                KRW
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="foodAmount">
+              💰 金額
+            </label>
+
+            <input
+              type="number"
+              id="foodAmount"
+              min="0"
+              step="0.01"
+              inputmode="decimal"
+              placeholder="0"
+            >
+
+          </div>
+
+        </div>
+
+
+        <!-- =================================================
+             RATING
+        ================================================== -->
 
         <div class="form-group">
 
           <label>
-            評分
+            ⭐ 評分
           </label>
 
 
@@ -949,76 +1535,78 @@
         </div>
 
 
-        <div class="checkbox-row">
+        <!-- =================================================
+             PHOTO
+        ================================================== -->
+
+        <div class="form-group">
+
+          <label for="foodPhotoInput">
+            📷 美食照片
+          </label>
+
 
           <input
-            type="checkbox"
-            id="foodRecommended"
+            type="file"
+            id="foodPhotoInput"
+            accept="image/*"
           >
 
-          <label for="foodRecommended">
-            👍 推薦
-          </label>
+
+          <div class="food-photo-note">
+            手機可直接拍照或從相簿選取
+          </div>
+
+
+          <div
+            id="foodPhotoPreviewWrap"
+            class="food-photo-preview-wrap"
+          >
+
+            <img
+              id="foodPhotoPreview"
+              class="food-photo-preview"
+              alt="美食照片預覽"
+            >
+
+
+            <button
+              type="button"
+              id="removeFoodPhotoButton"
+              class="btn-soft-red food-photo-remove"
+            >
+              🗑️ 移除照片
+            </button>
+
+          </div>
 
         </div>
 
 
+        <!-- =================================================
+             NOTE
+        ================================================== -->
+
         <div
-          class="grid-2"
+          class="form-group"
           style="margin-top:13px;"
         >
 
-          <div class="form-group">
+          <label for="foodNote">
+            📝 備註
+          </label>
 
-            <label for="foodCurrency">
-              幣別
-            </label>
-
-            <select id="foodCurrency">
-
-              <option value="TWD">
-                TWD
-              </option>
-
-              <option value="JPY">
-                JPY
-              </option>
-
-              <option value="CNY">
-                CNY
-              </option>
-
-              <option value="USD">
-                USD
-              </option>
-
-              <option value="KRW">
-                KRW
-              </option>
-
-            </select>
-
-          </div>
-
-
-          <div class="form-group">
-
-            <label for="foodAmount">
-              金額
-            </label>
-
-            <input
-              type="number"
-              id="foodAmount"
-              min="0"
-              step="0.01"
-              placeholder="0"
-            >
-
-          </div>
+          <textarea
+            id="foodNote"
+            placeholder="例如：排隊約 20 分鐘、湯頭偏濃，下次還會再來"
+          ></textarea>
 
         </div>
 
+
+        <!-- =================================================
+             FOOD → EXPENSE
+        ================================================== -->
 
         <div class="checkbox-row">
 
@@ -1028,28 +1616,15 @@
           >
 
           <label for="foodSyncExpense">
-            同步建立消費紀錄
+            💰 同步建立消費紀錄
           </label>
 
         </div>
 
 
-        <div
-          class="form-group"
-          style="margin-top:13px;"
-        >
-
-          <label for="foodNote">
-            備註
-          </label>
-
-          <textarea
-            id="foodNote"
-            placeholder="餐點心得、排隊時間..."
-          ></textarea>
-
-        </div>
-
+        <!-- =================================================
+             SAVE / CANCEL
+        ================================================== -->
 
         <div class="button-row">
 
@@ -1073,30 +1648,29 @@
 
         </div>
 
-      </div>
 
+        <div class="food-source-note">
 
-      <!-- Food Search -->
+          地址與附近店家資料來源為
+          OpenStreetMap、Nominatim、Overpass。
 
-      <div class="card">
+          <br>
 
-        <h2 class="card-title">
-          🔎 美食搜尋
-        </h2>
+          照片 V2.2.3 先儲存在本機 IndexedDB，
+          不會同步到 D1。
 
-
-        <input
-          type="search"
-          id="foodSearch"
-          placeholder="搜尋店家、餐點、分類、地址、備註..."
-        >
+        </div>
 
       </div>
 
+
+      <!-- =================================================
+           FOOD RECORD LIST
+      ================================================== -->
 
       <div id="foodList"></div>
 
-    </section>
+    </section>        
 
 
     <!-- ===================================================
