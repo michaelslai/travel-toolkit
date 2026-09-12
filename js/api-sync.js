@@ -1,5 +1,5 @@
 /* =========================================================
-   Travel Toolkit V2.2.0 Modular
+   Travel Toolkit V2.2.3 Modular
    File: js/api-sync.js
    Modified: 2026-09-12
 
@@ -17,6 +17,12 @@
    - 加入 Sync Queue / Push Upsert / Push Delete debug log
    - 加入 Pull Merge / Keep Local / Accept Server debug log
    - 僅增加 Console 可觀測性，不修改同步行為
+
+   V2.2.3:
+   - photo_local 為 Local-only，不送 D1 / Worker
+   - Push reconcile 同 UID時保留 photo_local
+   - Canonical UID reconcile 時保留 photo_local
+   - Pull merge 時保留 photo_local
 ========================================================= */
 
 import {
@@ -498,12 +504,23 @@ async function reconcileCanonicalUid(
 
   /*
     Server UID 和 Local UID 相同。
+
+    V2.2.3:
+    不能直接用 Server record 覆蓋 Local，
+    否則 Local-only 的 photo_local 會遺失。
   */
 
   if (
     canonicalUid ===
     originalUid
   ) {
+
+    const existing =
+      await dbGet(
+        storeName,
+        originalUid
+      );
+
 
     const local =
       await serverRecordToLocal(
@@ -512,9 +529,35 @@ async function reconcileCanonicalUid(
       );
 
 
+    /*
+      V2.2.3
+      Food photo_local 僅存在 Local IndexedDB。
+    */
+
+    if (
+      entity ===
+        "food_records" &&
+      existing?.photo_local
+    ) {
+
+      local.photo_local =
+        existing.photo_local;
+
+    }
+
+
     await dbPut(
       storeName,
-      local
+      {
+
+        ...existing,
+
+        ...local,
+
+        sync_status:
+          "synced"
+
+      }
     );
 
 
@@ -554,30 +597,62 @@ async function reconcileCanonicalUid(
     );
 
 
+  /*
+    V2.2.3
+    Canonical UID 改變時，
+    仍需保留 Local-only photo_local。
+  */
+
+  const preservedPhotoLocal =
+
+    entity ===
+      "food_records"
+
+      ? (
+          temporary?.photo_local ||
+          canonicalExisting?.photo_local ||
+          null
+        )
+
+      : undefined;
+
+
+  const mergedRecord = {
+
+    ...temporary,
+
+    ...canonicalExisting,
+
+    ...converted,
+
+    client_uid:
+      canonicalUid,
+
+    cloud_id:
+      serverRecord.id,
+
+    sync_status:
+      "synced"
+
+  };
+
+
+  if (
+    entity ===
+    "food_records"
+  ) {
+
+    mergedRecord.photo_local =
+      preservedPhotoLocal;
+
+  }
+
+
   await dbPut(
     storeName,
-    {
-
-      ...temporary,
-
-      ...canonicalExisting,
-
-      ...converted,
-
-      client_uid:
-        canonicalUid,
-
-      cloud_id:
-        serverRecord.id,
-
-      sync_status:
-        "synced"
-
-    }
+    mergedRecord
   );
-
-
-  /*
+     /*
     刪除 temporary local row。
   */
 
@@ -927,13 +1002,24 @@ async function mergeServerRecord(
       serverRecord
     );
 
-if (
-  entity === "food_records" &&
-  existing?.photo_local
-) {
-  local.photo_local =
-    existing.photo_local;
-}   
+
+  /*
+    V2.2.3
+    D1 / Worker 不保存 photo_local，
+    Pull Server → Local 時保留本機照片。
+  */
+
+  if (
+    entity ===
+      "food_records" &&
+    existing?.photo_local
+  ) {
+
+    local.photo_local =
+      existing.photo_local;
+
+  }
+
 
   syncDebug(
     "PULL ACCEPT SERVER",
@@ -1018,15 +1104,17 @@ function prepareSyncData(
     Local-only fields
   */
 
-delete data.sync_status;
-delete data.cloud_id;
+  delete data.sync_status;
+  delete data.cloud_id;
 
-/*
-  V2.2.3
-  Local-only food photo.
-  不送到 D1 / Worker。
-*/
-delete data.photo_local;
+
+  /*
+    V2.2.3
+    Local-only food photo.
+    不送到 D1 / Worker。
+  */
+
+  delete data.photo_local;
 
 
   /*
@@ -1087,6 +1175,8 @@ delete data.photo_local;
   return data;
 
 }
+
+
 /* =========================================================
    UPSERT ONE QUEUE ITEM
 ========================================================= */
@@ -1200,7 +1290,17 @@ async function syncUpsertItem(
 
       name:
         record.name ??
-        null
+        null,
+
+      /*
+        V2.2.3 debug:
+        僅確認 Local 是否有照片，
+        不輸出 Base64。
+      */
+      has_photo_local:
+        Boolean(
+          record.photo_local
+        )
     }
   );
 
@@ -1419,9 +1519,7 @@ async function syncDeleteItem(
         null
     }
   );
-
-
-  const result =
+     const result =
     await api(
       "/api/sync/delete",
       {
@@ -2024,6 +2122,7 @@ export async function pullCloudChanges() {
 
 }
 
+
 /* =========================================================
    CLOUD CONNECTION TEST
 ========================================================= */
@@ -2162,8 +2261,6 @@ export async function getSyncStatusSnapshot() {
   };
 
 }
-
-
 /* =========================================================
    FULL SYNC
 ========================================================= */
@@ -2685,6 +2782,7 @@ export async function retryAllErrors() {
   );
 
 }
+
 
 /* =========================================================
    NETWORK HELPERS
