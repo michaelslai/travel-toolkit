@@ -1,30 +1,29 @@
 <!--
 =============================================================
- Travel Toolkit V2.1.0
+ Travel Toolkit V2.1.1
  Modified: 2026-09-12
 =============================================================
 
-【V2.1.0】
-- 改為 Local-first 架構
-- IndexedDB 統一儲存：
-  trips / footprints / food_records / expenses
-- 新增 sync_queue
-- 新增 client_uid / cloud_id / sync_status
-- 新增 pending / syncing / synced / error 狀態
-- 新增開頁自動同步
-- 新增網路恢復自動同步
-- 新增「立即同步」功能
-- D1 ↔ Local 雙向同步
-- updated_at 採 Last Write Wins
-- deleted_at 採 tombstone soft delete
-- JSON 匯出改以 Local 完整資料為主
-- JSON 匯入改為 Local Merge 後再同步 D1
-- 保留足跡 / 美食 / 消費 / 旅程功能
-- 保留足跡 Leaflet 地圖
-- 保留美食 GPS / 評分 / 分類 / 推薦
-- 保留美食同步建立消費紀錄
+【V2.1.1】
+- 修正 V2.1.0 啟動流程可能中斷的問題
+- 重整 JavaScript 初始化順序
+- 移除後段覆寫 syncUpsertItem 的方式
+- canonical client_uid 邏輯直接整合進同步引擎
+- 新增全域 JavaScript Error 顯示
+- 新增 Promise Error 顯示
+- 新增 IndexedDB 初始化錯誤顯示
+- 強化 Safari / iPhone 相容性
+- 保留 Local-first
+- 保留 IndexedDB
+- 保留 pending / syncing / synced / error
+- 保留自動同步 D1
+- 保留離線新增
+- 保留 JSON 匯入 / 匯出
+- 保留 Trips / Footprints / Food / Expenses
+- 保留 Leaflet 足跡地圖
+- 保留美食 → 消費同步
 
-Frontend Version : 2.1.0
+Frontend Version : 2.1.1
 Worker API       : 2.1.1
 Database         : travel_db
 =============================================================
@@ -49,7 +48,7 @@ Database         : travel_db
 >
 
 <title>
-  Travel Toolkit V2.1.0
+  Travel Toolkit V2.1.1
 </title>
 
 <link
@@ -68,8 +67,8 @@ Database         : travel_db
 }
 
 html {
-  scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -101,7 +100,6 @@ button {
 
 button:disabled {
   opacity: .55;
-  cursor: default;
 }
 
 a {
@@ -123,9 +121,7 @@ header {
   padding:
     calc(14px + env(safe-area-inset-top))
     14px
-    11px;
-
-  color: white;
+    12px;
 
   background:
     linear-gradient(
@@ -133,6 +129,8 @@ header {
       #0f172a,
       #1e293b
     );
+
+  color: white;
 
   box-shadow:
     0 2px 10px
@@ -249,6 +247,35 @@ header {
 
 
 /* =========================================================
+   DEBUG ERROR
+========================================================= */
+
+#startupError {
+  display: none;
+
+  width: min(920px,calc(100% - 24px));
+
+  margin: 12px auto 0;
+
+  padding: 12px;
+
+  border-radius: 12px;
+
+  background: #fee2e2;
+
+  color: #991b1b;
+
+  font-size: 12px;
+
+  line-height: 1.6;
+
+  white-space: pre-wrap;
+
+  word-break: break-word;
+}
+
+
+/* =========================================================
    LAYOUT
 ========================================================= */
 
@@ -356,7 +383,7 @@ header {
 
 
 /* =========================================================
-   FORMS
+   FORM
 ========================================================= */
 
 .field {
@@ -409,7 +436,6 @@ textarea:focus {
 
 textarea {
   min-height: 76px;
-
   resize: vertical;
 }
 
@@ -424,7 +450,7 @@ textarea {
 
 
 /* =========================================================
-   BUTTONS
+   BUTTON
 ========================================================= */
 
 .btn {
@@ -476,11 +502,6 @@ textarea {
   color: #1d5fa7;
 }
 
-.btn-soft-green {
-  background: #eaf8ef;
-  color: #17713f;
-}
-
 .button-row {
   display: grid;
 
@@ -509,140 +530,20 @@ textarea {
 
 .message.success {
   display: block;
-
   background: #dcfce7;
-
   color: #166534;
 }
 
 .message.error {
   display: block;
-
   background: #fee2e2;
-
   color: #991b1b;
 }
 
 .message.info {
   display: block;
-
   background: #eaf3ff;
-
   color: #1759a7;
-}
-
-
-/* =========================================================
-   SYNC STATUS
-========================================================= */
-
-.sync-summary {
-  display: grid;
-
-  grid-template-columns:
-    repeat(4,1fr);
-
-  gap: 7px;
-}
-
-.sync-box {
-  padding: 11px 5px;
-
-  border-radius: 11px;
-
-  background: #f7f8fa;
-
-  text-align: center;
-}
-
-.sync-number {
-  font-size: 20px;
-
-  font-weight: 900;
-}
-
-.sync-label {
-  margin-top: 3px;
-
-  color: #6b7280;
-
-  font-size: 11px;
-}
-
-.sync-badge {
-  display: inline-block;
-
-  padding: 3px 7px;
-
-  margin-left: 5px;
-
-  border-radius: 999px;
-
-  font-size: 10px;
-
-  font-weight: 800;
-}
-
-.sync-badge.synced {
-  background: #dcfce7;
-
-  color: #166534;
-}
-
-.sync-badge.pending {
-  background: #fef3c7;
-
-  color: #92400e;
-}
-
-.sync-badge.syncing {
-  background: #dbeafe;
-
-  color: #1d4ed8;
-}
-
-.sync-badge.error {
-  background: #fee2e2;
-
-  color: #b91c1c;
-}
-
-
-/* =========================================================
-   SUMMARY
-========================================================= */
-
-.summary-grid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(3,1fr);
-
-  gap: 8px;
-}
-
-.summary-item {
-  padding: 11px 5px;
-
-  border-radius: 11px;
-
-  background: #f7f8fa;
-
-  text-align: center;
-}
-
-.summary-value {
-  font-size: 18px;
-
-  font-weight: 900;
-}
-
-.summary-label {
-  margin-top: 3px;
-
-  color: #6b7280;
-
-  font-size: 11px;
 }
 
 
@@ -662,8 +563,7 @@ textarea {
 
 .route-number-icon {
   background: transparent;
-
-  border: none;
+  border: 0;
 }
 
 .route-number-marker {
@@ -741,7 +641,7 @@ textarea {
 
 
 /* =========================================================
-   TYPES
+   TYPE
 ========================================================= */
 
 .type-grid {
@@ -858,18 +758,6 @@ textarea {
   font-weight: 700;
 }
 
-.record-photo {
-  width: 100%;
-
-  max-height: 420px;
-
-  margin-top: 10px;
-
-  object-fit: cover;
-
-  border-radius: 12px;
-}
-
 .badge {
   display: inline-block;
 
@@ -897,11 +785,6 @@ textarea {
   color: #b45309;
 }
 
-.badge.yellow {
-  background: #fff5c9;
-  color: #8b6700;
-}
-
 .badge.green {
   background: #eaf8ef;
   color: #17713f;
@@ -919,7 +802,122 @@ textarea {
 
 
 /* =========================================================
-   FOOD STAR
+   SYNC BADGE
+========================================================= */
+
+.sync-badge {
+  display: inline-block;
+
+  padding: 3px 7px;
+
+  margin-left: 5px;
+
+  border-radius: 999px;
+
+  font-size: 10px;
+
+  font-weight: 800;
+}
+
+.sync-badge.synced {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.sync-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.sync-badge.syncing {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.sync-badge.error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+
+/* =========================================================
+   SYNC SUMMARY
+========================================================= */
+
+.sync-summary {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4,1fr);
+
+  gap: 7px;
+}
+
+.sync-box {
+  padding: 11px 5px;
+
+  border-radius: 11px;
+
+  background: #f7f8fa;
+
+  text-align: center;
+}
+
+.sync-number {
+  font-size: 20px;
+
+  font-weight: 900;
+}
+
+.sync-label {
+  margin-top: 3px;
+
+  color: #6b7280;
+
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+.summary-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4,1fr);
+
+  gap: 8px;
+}
+
+.summary-item {
+  padding: 11px 5px;
+
+  border-radius: 11px;
+
+  background: #f7f8fa;
+
+  text-align: center;
+}
+
+.summary-value {
+  font-size: 18px;
+
+  font-weight: 900;
+}
+
+.summary-label {
+  margin-top: 3px;
+
+  color: #6b7280;
+
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   STAR
 ========================================================= */
 
 .star-group {
@@ -944,7 +942,7 @@ textarea {
 
 
 /* =========================================================
-   SWITCH ROW
+   SWITCH
 ========================================================= */
 
 .switch-row {
@@ -969,29 +967,10 @@ textarea {
   height: 21px;
 
   margin: 0;
-
-  flex: 0 0 auto;
 }
 
 .switch-row label {
   margin: 0;
-
-  font-size: 14px;
-}
-
-
-/* =========================================================
-   SMALL
-========================================================= */
-
-.small {
-  margin-top: 5px;
-
-  color: #6b7280;
-
-  font-size: 11px;
-
-  line-height: 1.6;
 }
 
 
@@ -1073,8 +1052,6 @@ textarea {
 
   color: white;
 
-  text-align: center;
-
   font-size: 13px;
 
   opacity: 0;
@@ -1097,6 +1074,16 @@ textarea {
     translateY(0);
 }
 
+.small {
+  margin-top: 7px;
+
+  color: #6b7280;
+
+  font-size: 11px;
+
+  line-height: 1.6;
+}
+
 
 /* =========================================================
    MOBILE
@@ -1106,19 +1093,20 @@ textarea {
 (max-width:600px) {
 
   .tab {
-    padding:
-      9px
-      1px;
-
+    padding: 9px 1px;
     font-size: 11px;
   }
 
   .row2 {
-    grid-template-columns:
-      1fr;
+    grid-template-columns: 1fr;
   }
 
   .sync-summary {
+    grid-template-columns:
+      repeat(2,1fr);
+  }
+
+  .summary-grid {
     grid-template-columns:
       repeat(2,1fr);
   }
@@ -1155,8 +1143,9 @@ textarea {
 
       </div>
 
+
       <span class="version-badge">
-        V2.1.0
+        V2.1.1
       </span>
 
     </div>
@@ -1168,11 +1157,11 @@ textarea {
 
         <span
           id="onlineDot"
-          class="status-dot"
+          class="status-dot pending"
         ></span>
 
         <span id="onlineText">
-          檢查網路...
+          啟動中...
         </span>
 
       </div>
@@ -1182,11 +1171,11 @@ textarea {
 
         <span
           id="cloudDot"
-          class="status-dot"
+          class="status-dot pending"
         ></span>
 
         <span id="cloudText">
-          檢查 D1...
+          D1 尚未檢查
         </span>
 
       </div>
@@ -1196,11 +1185,11 @@ textarea {
 
         <span
           id="syncDot"
-          class="status-dot"
+          class="status-dot pending"
         ></span>
 
         <span id="syncText">
-          同步狀態讀取中
+          Local 尚未初始化
         </span>
 
       </div>
@@ -1210,6 +1199,9 @@ textarea {
   </div>
 
 </header>
+
+
+<div id="startupError"></div>
 
 
 <div class="container">
@@ -1222,7 +1214,7 @@ textarea {
 
 
   <!-- =====================================================
-       MAIN TABS
+       TABS
   ====================================================== -->
 
   <div class="tabs">
@@ -1230,6 +1222,7 @@ textarea {
     <button
       class="tab active"
       data-tab="footprintPanel"
+      type="button"
     >
       📍<br>足跡
     </button>
@@ -1237,6 +1230,7 @@ textarea {
     <button
       class="tab"
       data-tab="foodPanel"
+      type="button"
     >
       🍜<br>美食
     </button>
@@ -1244,6 +1238,7 @@ textarea {
     <button
       class="tab"
       data-tab="expensePanel"
+      type="button"
     >
       💰<br>消費
     </button>
@@ -1251,6 +1246,7 @@ textarea {
     <button
       class="tab"
       data-tab="tripPanel"
+      type="button"
     >
       🧳<br>旅程
     </button>
@@ -1258,6 +1254,7 @@ textarea {
     <button
       class="tab"
       data-tab="syncPanel"
+      type="button"
     >
       ☁️<br>同步
     </button>
@@ -1266,7 +1263,7 @@ textarea {
 
 
   <!-- =====================================================
-       FOOTPRINT
+       FOOTPRINT PANEL
   ====================================================== -->
 
   <section
@@ -1281,7 +1278,13 @@ textarea {
         🧳 目前旅程
       </div>
 
-      <select id="footprintTrip"></select>
+      <select id="footprintTrip">
+
+        <option value="">
+          未分類旅程
+        </option>
+
+      </select>
 
     </div>
 
@@ -1334,6 +1337,7 @@ textarea {
         <button
           class="type-btn"
           data-type="attraction"
+          type="button"
         >
           <span>📷</span>
           景點
@@ -1342,6 +1346,7 @@ textarea {
         <button
           class="type-btn"
           data-type="restaurant"
+          type="button"
         >
           <span>🍜</span>
           餐廳
@@ -1350,6 +1355,7 @@ textarea {
         <button
           class="type-btn"
           data-type="hotel"
+          type="button"
         >
           <span>🏨</span>
           飯店
@@ -1358,6 +1364,7 @@ textarea {
         <button
           class="type-btn"
           data-type="station"
+          type="button"
         >
           <span>🚉</span>
           車站
@@ -1366,6 +1373,7 @@ textarea {
         <button
           class="type-btn"
           data-type="airport"
+          type="button"
         >
           <span>✈️</span>
           機場
@@ -1374,6 +1382,7 @@ textarea {
         <button
           class="type-btn"
           data-type="shopping"
+          type="button"
         >
           <span>🛍️</span>
           購物
@@ -1382,6 +1391,7 @@ textarea {
         <button
           class="type-btn"
           data-type="rest"
+          type="button"
         >
           <span>☕</span>
           休息
@@ -1390,6 +1400,7 @@ textarea {
         <button
           class="type-btn active"
           data-type="other"
+          type="button"
         >
           <span>📍</span>
           其他
@@ -1435,9 +1446,7 @@ textarea {
           備註
         </label>
 
-        <textarea
-          id="footprintNote"
-        ></textarea>
+        <textarea id="footprintNote"></textarea>
 
       </div>
 
@@ -1445,6 +1454,7 @@ textarea {
       <button
         id="saveFootprintButton"
         class="btn btn-green"
+        type="button"
       >
         📍 儲存足跡
       </button>
@@ -1461,22 +1471,22 @@ textarea {
 
       <div class="field">
 
-        <label>
-          搜尋
-        </label>
-
         <input
           id="footprintSearch"
           type="search"
-          placeholder="搜尋地點、備註"
+          placeholder="搜尋地點、地址、備註"
         >
 
       </div>
 
 
-      <div
-        id="footprintList"
-      ></div>
+      <div id="footprintList">
+
+        <div class="empty">
+          Local 資料載入中...
+        </div>
+
+      </div>
 
     </div>
 
@@ -1484,7 +1494,7 @@ textarea {
 
 
   <!-- =====================================================
-       FOOD
+       FOOD PANEL
   ====================================================== -->
 
   <section
@@ -1512,7 +1522,13 @@ textarea {
           🧳 旅程
         </label>
 
-        <select id="foodTrip"></select>
+        <select id="foodTrip">
+
+          <option value="">
+            未分類旅程
+          </option>
+
+        </select>
 
       </div>
 
@@ -1521,9 +1537,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            日期
-          </label>
+          <label>日期</label>
 
           <input
             id="foodDate"
@@ -1535,9 +1549,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            時間
-          </label>
+          <label>時間</label>
 
           <input
             id="foodTime"
@@ -1560,6 +1572,7 @@ textarea {
       <button
         id="foodGpsButton"
         class="btn btn-soft-blue"
+        type="button"
       >
         📍 取得目前位置
       </button>
@@ -1573,9 +1586,7 @@ textarea {
 
       <div class="field">
 
-        <label>
-          店家
-        </label>
+        <label>店家</label>
 
         <input
           id="foodShop"
@@ -1587,9 +1598,7 @@ textarea {
 
       <div class="field">
 
-        <label>
-          餐點
-        </label>
+        <label>餐點</label>
 
         <input
           id="foodName"
@@ -1603,16 +1612,11 @@ textarea {
 
         <div class="field">
 
-          <label>
-            餐別
-          </label>
+          <label>餐別</label>
 
           <select id="foodMealType">
 
-            <option value="">
-              未分類
-            </option>
-
+            <option value="">未分類</option>
             <option>早餐</option>
             <option>午餐</option>
             <option>下午茶</option>
@@ -1627,16 +1631,11 @@ textarea {
 
         <div class="field">
 
-          <label>
-            分類
-          </label>
+          <label>分類</label>
 
           <select id="foodCategory">
 
-            <option value="">
-              未分類
-            </option>
-
+            <option value="">未分類</option>
             <option>主食</option>
             <option>麵飯</option>
             <option>燒肉</option>
@@ -1675,9 +1674,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            金額
-          </label>
+          <label>金額</label>
 
           <input
             id="foodAmount"
@@ -1691,27 +1688,14 @@ textarea {
 
         <div class="field">
 
-          <label>
-            幣別
-          </label>
+          <label>幣別</label>
 
           <select id="foodCurrency">
 
-            <option value="JPY">
-              JPY
-            </option>
-
-            <option value="TWD">
-              TWD
-            </option>
-
-            <option value="CNY">
-              CNY
-            </option>
-
-            <option value="USD">
-              USD
-            </option>
+            <option value="JPY">JPY</option>
+            <option value="TWD">TWD</option>
+            <option value="CNY">CNY</option>
+            <option value="USD">USD</option>
 
           </select>
 
@@ -1737,19 +1721,19 @@ textarea {
 
       <div class="field">
 
-        <label>
-          評分
-        </label>
+        <label>評分</label>
 
         <div
           id="foodStarGroup"
           class="star-group"
         >
+
           <span class="star" data-value="1">★</span>
           <span class="star" data-value="2">★</span>
           <span class="star" data-value="3">★</span>
           <span class="star" data-value="4">★</span>
           <span class="star" data-value="5">★</span>
+
         </div>
 
       </div>
@@ -1757,13 +1741,9 @@ textarea {
 
       <div class="field">
 
-        <label>
-          備註
-        </label>
+        <label>備註</label>
 
-        <textarea
-          id="foodNote"
-        ></textarea>
+        <textarea id="foodNote"></textarea>
 
       </div>
 
@@ -1771,6 +1751,7 @@ textarea {
       <button
         id="saveFoodButton"
         class="btn btn-orange"
+        type="button"
       >
         🍜 儲存美食
       </button>
@@ -1779,6 +1760,7 @@ textarea {
       <button
         id="cancelFoodEditButton"
         class="btn btn-gray"
+        type="button"
         style="display:none"
       >
         取消編輯
@@ -1793,7 +1775,6 @@ textarea {
         🍽️ 美食紀錄
       </div>
 
-
       <div class="field">
 
         <input
@@ -1804,10 +1785,13 @@ textarea {
 
       </div>
 
+      <div id="foodList">
 
-      <div
-        id="foodList"
-      ></div>
+        <div class="empty">
+          Local 資料載入中...
+        </div>
+
+      </div>
 
     </div>
 
@@ -1815,7 +1799,7 @@ textarea {
 
 
   <!-- =====================================================
-       EXPENSE
+       EXPENSE PANEL
   ====================================================== -->
 
   <section
@@ -1843,7 +1827,13 @@ textarea {
           🧳 旅程
         </label>
 
-        <select id="expenseTrip"></select>
+        <select id="expenseTrip">
+
+          <option value="">
+            未分類旅程
+          </option>
+
+        </select>
 
       </div>
 
@@ -1852,9 +1842,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            日期
-          </label>
+          <label>日期</label>
 
           <input
             id="expenseDate"
@@ -1866,9 +1854,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            時間
-          </label>
+          <label>時間</label>
 
           <input
             id="expenseTime"
@@ -1884,35 +1870,16 @@ textarea {
 
         <div class="field">
 
-          <label>
-            分類
-          </label>
+          <label>分類</label>
 
           <select id="expenseCategory">
 
-            <option value="food">
-              餐飲
-            </option>
-
-            <option value="transport">
-              交通
-            </option>
-
-            <option value="shopping">
-              購物
-            </option>
-
-            <option value="hotel">
-              住宿
-            </option>
-
-            <option value="ticket">
-              門票
-            </option>
-
-            <option value="other">
-              其他
-            </option>
+            <option value="food">餐飲</option>
+            <option value="transport">交通</option>
+            <option value="shopping">購物</option>
+            <option value="hotel">住宿</option>
+            <option value="ticket">門票</option>
+            <option value="other">其他</option>
 
           </select>
 
@@ -1921,13 +1888,9 @@ textarea {
 
         <div class="field">
 
-          <label>
-            子分類
-          </label>
+          <label>子分類</label>
 
-          <input
-            id="expenseSubcategory"
-          >
+          <input id="expenseSubcategory">
 
         </div>
 
@@ -1936,13 +1899,9 @@ textarea {
 
       <div class="field">
 
-        <label>
-          標題
-        </label>
+        <label>標題</label>
 
-        <input
-          id="expenseTitle"
-        >
+        <input id="expenseTitle">
 
       </div>
 
@@ -1951,9 +1910,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            金額
-          </label>
+          <label>金額</label>
 
           <input
             id="expenseAmount"
@@ -1967,27 +1924,14 @@ textarea {
 
         <div class="field">
 
-          <label>
-            幣別
-          </label>
+          <label>幣別</label>
 
           <select id="expenseCurrency">
 
-            <option value="JPY">
-              JPY
-            </option>
-
-            <option value="TWD">
-              TWD
-            </option>
-
-            <option value="CNY">
-              CNY
-            </option>
-
-            <option value="USD">
-              USD
-            </option>
+            <option value="JPY">JPY</option>
+            <option value="TWD">TWD</option>
+            <option value="CNY">CNY</option>
+            <option value="USD">USD</option>
 
           </select>
 
@@ -2000,9 +1944,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            付款方式
-          </label>
+          <label>付款方式</label>
 
           <input
             id="expensePaymentMethod"
@@ -2014,13 +1956,9 @@ textarea {
 
         <div class="field">
 
-          <label>
-            付款人
-          </label>
+          <label>付款人</label>
 
-          <input
-            id="expensePayer"
-          >
+          <input id="expensePayer">
 
         </div>
 
@@ -2029,13 +1967,9 @@ textarea {
 
       <div class="field">
 
-        <label>
-          備註
-        </label>
+        <label>備註</label>
 
-        <textarea
-          id="expenseNote"
-        ></textarea>
+        <textarea id="expenseNote"></textarea>
 
       </div>
 
@@ -2043,6 +1977,7 @@ textarea {
       <button
         id="saveExpenseButton"
         class="btn btn-green"
+        type="button"
       >
         💰 儲存消費
       </button>
@@ -2051,6 +1986,7 @@ textarea {
       <button
         id="cancelExpenseEditButton"
         class="btn btn-gray"
+        type="button"
         style="display:none"
       >
         取消編輯
@@ -2065,9 +2001,13 @@ textarea {
         💳 消費紀錄
       </div>
 
-      <div
-        id="expenseList"
-      ></div>
+      <div id="expenseList">
+
+        <div class="empty">
+          Local 資料載入中...
+        </div>
+
+      </div>
 
     </div>
 
@@ -2075,7 +2015,7 @@ textarea {
 
 
   <!-- =====================================================
-       TRIP
+       TRIP PANEL
   ====================================================== -->
 
   <section
@@ -2099,9 +2039,7 @@ textarea {
 
       <div class="field">
 
-        <label>
-          旅程名稱
-        </label>
+        <label>旅程名稱</label>
 
         <input
           id="tripName"
@@ -2115,9 +2053,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            開始日期
-          </label>
+          <label>開始日期</label>
 
           <input
             id="tripStart"
@@ -2129,9 +2065,7 @@ textarea {
 
         <div class="field">
 
-          <label>
-            結束日期
-          </label>
+          <label>結束日期</label>
 
           <input
             id="tripEnd"
@@ -2145,13 +2079,9 @@ textarea {
 
       <div class="field">
 
-        <label>
-          備註
-        </label>
+        <label>備註</label>
 
-        <textarea
-          id="tripNote"
-        ></textarea>
+        <textarea id="tripNote"></textarea>
 
       </div>
 
@@ -2159,6 +2089,7 @@ textarea {
       <button
         id="saveTripButton"
         class="btn btn-primary"
+        type="button"
       >
         🧳 儲存旅程
       </button>
@@ -2167,6 +2098,7 @@ textarea {
       <button
         id="cancelTripEditButton"
         class="btn btn-gray"
+        type="button"
         style="display:none"
       >
         取消編輯
@@ -2181,9 +2113,13 @@ textarea {
         我的旅程
       </div>
 
-      <div
-        id="tripList"
-      ></div>
+      <div id="tripList">
+
+        <div class="empty">
+          Local 資料載入中...
+        </div>
+
+      </div>
 
     </div>
 
@@ -2191,7 +2127,7 @@ textarea {
 
 
   <!-- =====================================================
-       SYNC / BACKUP
+       SYNC PANEL
   ====================================================== -->
 
   <section
@@ -2278,6 +2214,7 @@ textarea {
       <button
         id="manualSyncButton"
         class="btn btn-primary"
+        type="button"
       >
         🔄 立即同步
       </button>
@@ -2287,53 +2224,7 @@ textarea {
         id="lastSyncText"
         class="small"
       >
-        尚未同步
-      </div>
-
-    </div>
-
-
-    <div class="card">
-
-      <div class="card-title">
-        💾 JSON 備份
-      </div>
-
-
-      <button
-        id="exportButton"
-        class="btn btn-gray"
-      >
-        ⬇️ 匯出 Local 完整備份
-      </button>
-
-
-      <div class="field">
-
-        <label>
-          匯入 JSON
-        </label>
-
-        <input
-          id="importFile"
-          type="file"
-          accept=".json,application/json"
-        >
-
-      </div>
-
-
-      <button
-        id="importButton"
-        class="btn btn-gray"
-      >
-        ⬆️ 匯入並合併 Local
-      </button>
-
-
-      <div class="small">
-        匯入後不會直接逐筆 POST D1，
-        而是先合併到 IndexedDB，再由同步引擎送往 D1。
+        尚未完成同步
       </div>
 
     </div>
@@ -2395,13 +2286,6 @@ textarea {
 
         </div>
 
-      </div>
-
-
-      <div
-        class="summary-grid"
-        style="margin-top:8px"
-      >
 
         <div class="summary-item">
 
@@ -2418,6 +2302,56 @@ textarea {
 
         </div>
 
+      </div>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+        💾 JSON 備份
+      </div>
+
+
+      <button
+        id="exportButton"
+        class="btn btn-gray"
+        type="button"
+      >
+        ⬇️ 匯出 Local 完整備份
+      </button>
+
+
+      <div
+        class="field"
+        style="margin-top:14px"
+      >
+
+        <label>
+          匯入 JSON
+        </label>
+
+        <input
+          id="importFile"
+          type="file"
+          accept=".json,application/json"
+        >
+
+      </div>
+
+
+      <button
+        id="importButton"
+        class="btn btn-gray"
+        type="button"
+      >
+        ⬆️ 匯入並合併 Local
+      </button>
+
+
+      <div class="small">
+        匯入後先寫入 IndexedDB，再由同步引擎送往 D1。
       </div>
 
     </div>
@@ -2450,8 +2384,8 @@ textarea {
     <div
       id="confirmMessage"
       style="
-        line-height:1.7;
         white-space:pre-line;
+        line-height:1.7;
         margin-bottom:14px;
       "
     ></div>
@@ -2462,6 +2396,7 @@ textarea {
       <button
         id="confirmCancel"
         class="btn btn-gray"
+        type="button"
       >
         取消
       </button>
@@ -2469,6 +2404,7 @@ textarea {
       <button
         id="confirmOk"
         class="btn btn-red"
+        type="button"
       >
         確定
       </button>
@@ -2494,13 +2430,114 @@ textarea {
 <script>
 
 /* =========================================================
+   GLOBAL STARTUP ERROR MONITOR
+
+   這段故意放最前面。
+   後續任何 JS 啟動錯誤都直接顯示在畫面。
+========================================================= */
+
+function showStartupError(
+  text
+) {
+
+  const box =
+    document.getElementById(
+      "startupError"
+    );
+
+
+  if (
+    !box
+  ) {
+
+    return;
+
+  }
+
+
+  box.style.display =
+    "block";
+
+
+  box.textContent =
+    "⚠️ JavaScript 啟動錯誤\n\n" +
+    String(
+      text
+    );
+
+}
+
+
+window.addEventListener(
+  "error",
+  function(
+    event
+  ) {
+
+    const detail =
+
+      (
+        event.message ||
+        "Unknown JavaScript Error"
+      ) +
+
+      (
+        event.filename
+          ? "\n檔案：" +
+            event.filename
+          : ""
+      ) +
+
+      (
+        event.lineno
+          ? "\n行號：" +
+            event.lineno
+          : ""
+      );
+
+
+    showStartupError(
+      detail
+    );
+
+  }
+);
+
+
+window.addEventListener(
+  "unhandledrejection",
+  function(
+    event
+  ) {
+
+    const reason =
+
+      event.reason?.stack ||
+
+      event.reason?.message ||
+
+      event.reason ||
+
+      "Unknown Promise Error";
+
+
+    showStartupError(
+      "Promise Error:\n" +
+      reason
+    );
+
+  }
+);
+
+
+/* =========================================================
    CONFIG
 ========================================================= */
 
 const APP_VERSION =
-  "2.1.0";
+  "2.1.1";
 
-const API_VERSION =
+const EXPECTED_API_VERSION =
   "2.1.1";
 
 const API_BASE =
@@ -2508,15 +2545,14 @@ const API_BASE =
 
 
 /* =========================================================
-   INDEXEDDB CONFIG
+   INDEXEDDB
 ========================================================= */
 
 const DB_NAME =
   "TravelToolkitDB";
 
 const DB_VERSION =
-  2;
-
+  3;
 
 const STORE_TRIPS =
   "trips";
@@ -2542,7 +2578,7 @@ let db =
 
 
 /* =========================================================
-   RUNTIME DATA
+   RUNTIME STATE
 ========================================================= */
 
 let trips =
@@ -2573,7 +2609,6 @@ let foodAddressDetails =
 let foodRating =
   0;
 
-
 let syncRunning =
   false;
 
@@ -2582,85 +2617,62 @@ let toastTimer =
 
 
 /* =========================================================
-   TYPE INFO
+   FOOTPRINT TYPES
 ========================================================= */
 
 const FOOTPRINT_TYPES = {
 
   attraction: {
-    icon:
-      "📷",
-
-    label:
-      "景點"
+    icon: "📷",
+    label: "景點"
   },
 
   restaurant: {
-    icon:
-      "🍜",
-
-    label:
-      "餐廳"
+    icon: "🍜",
+    label: "餐廳"
   },
 
   hotel: {
-    icon:
-      "🏨",
-
-    label:
-      "飯店"
+    icon: "🏨",
+    label: "飯店"
   },
 
   station: {
-    icon:
-      "🚉",
-
-    label:
-      "車站"
+    icon: "🚉",
+    label: "車站"
   },
 
   airport: {
-    icon:
-      "✈️",
-
-    label:
-      "機場"
+    icon: "✈️",
+    label: "機場"
   },
 
   shopping: {
-    icon:
-      "🛍️",
-
-    label:
-      "購物"
+    icon: "🛍️",
+    label: "購物"
   },
 
   rest: {
-    icon:
-      "☕",
-
-    label:
-      "休息"
+    icon: "☕",
+    label: "休息"
   },
 
   other: {
-    icon:
-      "📍",
-
-    label:
-      "其他"
+    icon: "📍",
+    label: "其他"
   }
 
 };
 
 
 /* =========================================================
-   UUID
+   BASIC HELPERS
 ========================================================= */
 
 function createUID() {
 
   if (
+    window.crypto &&
     crypto.randomUUID
   ) {
 
@@ -2686,10 +2698,6 @@ function createUID() {
 
 }
 
-
-/* =========================================================
-   TIME
-========================================================= */
 
 function nowISO() {
 
@@ -2720,47 +2728,45 @@ function getTimezoneInfo() {
       : "-";
 
 
-  const abs =
+  const absolute =
     Math.abs(
       offsetMinutes
     );
 
 
-  const hour =
+  const hours =
     Math.floor(
-      abs /
+      absolute /
       60
     );
 
 
-  const minute =
-    abs %
+  const minutes =
+    absolute %
     60;
-
-
-  const offset =
-
-    "GMT" +
-    sign +
-    hour +
-    (
-      minute
-        ? ":" +
-          String(
-            minute
-          )
-          .padStart(
-            2,
-            "0"
-          )
-        : ""
-    );
 
 
   return {
 
     timezone,
-    offset
+
+    offset:
+
+      "GMT" +
+      sign +
+      hours +
+      (
+        minutes
+          ? ":" +
+            String(
+              minutes
+            )
+            .padStart(
+              2,
+              "0"
+            )
+          : ""
+      )
 
   };
 
@@ -2839,8 +2845,3019 @@ function combineLocalDateTime(
   );
 
 }
+
+
+function parseSyncTime(
+  value
+) {
+
+  if (
+    !value
+  ) {
+
+    return NaN;
+
+  }
+
+
+  let text =
+    String(
+      value
+    )
+    .trim();
+
+
+  if (
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+      .test(
+        text
+      )
+  ) {
+
+    text =
+      text.replace(
+        " ",
+        "T"
+      ) +
+      "Z";
+
+  }
+
+
+  return new Date(
+    text
+  )
+  .getTime();
+
+}
+
+ /* =========================================================
+   API
+========================================================= */
+
+async function api(
+  path,
+  options = {}
+) {
+
+  const response =
+    await fetch(
+      API_BASE + path,
+      {
+
+        ...options,
+
+        headers: {
+
+          "Content-Type":
+            "application/json",
+
+          ...(
+            options.headers ||
+            {}
+          )
+
+        }
+
+      }
+    );
+
+
+  let data =
+    {};
+
+
+  try {
+
+    data =
+      await response.json();
+
+  }
+  catch {
+
+    data =
+      {};
+
+  }
+
+
+  if (
+    !response.ok
+  ) {
+
+    const error =
+      new Error(
+        data.error ||
+        `HTTP ${response.status}`
+      );
+
+
+    error.status =
+      response.status;
+
+
+    error.data =
+      data;
+
+
+    throw error;
+
+  }
+
+
+  return data;
+
+}
+
+
 /* =========================================================
-   BASIC UI HELPERS
+   INDEXEDDB OPEN
+========================================================= */
+
+function openLocalDB() {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      if (
+        !window.indexedDB
+      ) {
+
+        reject(
+          new Error(
+            "此瀏覽器不支援 IndexedDB"
+          )
+        );
+
+        return;
+
+      }
+
+
+      const request =
+        indexedDB.open(
+          DB_NAME,
+          DB_VERSION
+        );
+
+
+      request.onupgradeneeded =
+        event => {
+
+          const database =
+            event.target.result;
+
+
+          const transaction =
+            event.target.transaction;
+
+
+          const entityStores = [
+
+            STORE_TRIPS,
+            STORE_FOOTPRINTS,
+            STORE_FOOD,
+            STORE_EXPENSES
+
+          ];
+
+
+          entityStores.forEach(
+            storeName => {
+
+              let store;
+
+
+              if (
+                !database
+                  .objectStoreNames
+                  .contains(
+                    storeName
+                  )
+              ) {
+
+                store =
+                  database.createObjectStore(
+                    storeName,
+                    {
+                      keyPath:
+                        "client_uid"
+                    }
+                  );
+
+              }
+              else {
+
+                store =
+                  transaction.objectStore(
+                    storeName
+                  );
+
+              }
+
+
+              if (
+                !store
+                  .indexNames
+                  .contains(
+                    "cloud_id"
+                  )
+              ) {
+
+                store.createIndex(
+                  "cloud_id",
+                  "cloud_id",
+                  {
+                    unique:
+                      false
+                  }
+                );
+
+              }
+
+
+              if (
+                !store
+                  .indexNames
+                  .contains(
+                    "sync_status"
+                  )
+              ) {
+
+                store.createIndex(
+                  "sync_status",
+                  "sync_status",
+                  {
+                    unique:
+                      false
+                  }
+                );
+
+              }
+
+
+              if (
+                !store
+                  .indexNames
+                  .contains(
+                    "updated_at"
+                  )
+              ) {
+
+                store.createIndex(
+                  "updated_at",
+                  "updated_at",
+                  {
+                    unique:
+                      false
+                  }
+                );
+
+              }
+
+            }
+          );
+
+
+          if (
+            !database
+              .objectStoreNames
+              .contains(
+                STORE_SYNC_QUEUE
+              )
+          ) {
+
+            database.createObjectStore(
+              STORE_SYNC_QUEUE,
+              {
+                keyPath:
+                  "id"
+              }
+            );
+
+          }
+
+
+          if (
+            !database
+              .objectStoreNames
+              .contains(
+                STORE_META
+              )
+          ) {
+
+            database.createObjectStore(
+              STORE_META,
+              {
+                keyPath:
+                  "key"
+              }
+            );
+
+          }
+
+        };
+
+
+      request.onsuccess =
+        event => {
+
+          db =
+            event.target.result;
+
+
+          db.onversionchange =
+            () => {
+
+              db.close();
+
+            };
+
+
+          resolve(
+            db
+          );
+
+        };
+
+
+      request.onerror =
+        () => {
+
+          reject(
+            request.error ||
+            new Error(
+              "IndexedDB 開啟失敗"
+            )
+          );
+
+        };
+
+
+      request.onblocked =
+        () => {
+
+          reject(
+            new Error(
+              "IndexedDB 升級被舊分頁阻擋，請關閉其他 Travel Toolkit 分頁後重試"
+            )
+          );
+
+        };
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   DB PUT
+========================================================= */
+
+function dbPut(
+  storeName,
+  value
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      const transaction =
+        db.transaction(
+          storeName,
+          "readwrite"
+        );
+
+
+      const store =
+        transaction.objectStore(
+          storeName
+        );
+
+
+      store.put(
+        value
+      );
+
+
+      transaction.oncomplete =
+        () =>
+          resolve(
+            value
+          );
+
+
+      transaction.onerror =
+        () =>
+          reject(
+            transaction.error ||
+            new Error(
+              "IndexedDB 寫入失敗"
+            )
+          );
+
+
+      transaction.onabort =
+        () =>
+          reject(
+            transaction.error ||
+            new Error(
+              "IndexedDB 寫入中止"
+            )
+          );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   DB GET
+========================================================= */
+
+function dbGet(
+  storeName,
+  key
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      const transaction =
+        db.transaction(
+          storeName,
+          "readonly"
+        );
+
+
+      const request =
+        transaction
+          .objectStore(
+            storeName
+          )
+          .get(
+            key
+          );
+
+
+      request.onsuccess =
+        () =>
+          resolve(
+            request.result ||
+            null
+          );
+
+
+      request.onerror =
+        () =>
+          reject(
+            request.error ||
+            new Error(
+              "IndexedDB 讀取失敗"
+            )
+          );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   DB GET ALL
+========================================================= */
+
+function dbGetAll(
+  storeName
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      const transaction =
+        db.transaction(
+          storeName,
+          "readonly"
+        );
+
+
+      const request =
+        transaction
+          .objectStore(
+            storeName
+          )
+          .getAll();
+
+
+      request.onsuccess =
+        () =>
+          resolve(
+            request.result ||
+            []
+          );
+
+
+      request.onerror =
+        () =>
+          reject(
+            request.error ||
+            new Error(
+              "IndexedDB 讀取全部資料失敗"
+            )
+          );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   DB DELETE
+========================================================= */
+
+function dbDelete(
+  storeName,
+  key
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      const transaction =
+        db.transaction(
+          storeName,
+          "readwrite"
+        );
+
+
+      transaction
+        .objectStore(
+          storeName
+        )
+        .delete(
+          key
+        );
+
+
+      transaction.oncomplete =
+        () =>
+          resolve();
+
+
+      transaction.onerror =
+        () =>
+          reject(
+            transaction.error ||
+            new Error(
+              "IndexedDB 刪除失敗"
+            )
+          );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   META
+========================================================= */
+
+async function setMeta(
+  key,
+  value
+) {
+
+  await dbPut(
+    STORE_META,
+    {
+      key,
+      value
+    }
+  );
+
+}
+
+
+async function getMeta(
+  key,
+  fallback = null
+) {
+
+  const result =
+    await dbGet(
+      STORE_META,
+      key
+    );
+
+
+  return result
+    ? result.value
+    : fallback;
+
+}
+
+
+/* =========================================================
+   ENTITY STORE
+========================================================= */
+
+function entityStoreName(
+  entity
+) {
+
+  const map = {
+
+    trips:
+      STORE_TRIPS,
+
+    footprints:
+      STORE_FOOTPRINTS,
+
+    food_records:
+      STORE_FOOD,
+
+    expenses:
+      STORE_EXPENSES
+
+  };
+
+
+  return map[
+    entity
+  ] ||
+  null;
+
+}
+
+
+/* =========================================================
+   LOCAL RECORD METADATA
+========================================================= */
+
+function normalizeLocalRecord(
+  record,
+  existing = null,
+  options = {}
+) {
+
+  return {
+
+    ...existing,
+
+    ...record,
+
+    client_uid:
+      record.client_uid ||
+      existing?.client_uid ||
+      createUID(),
+
+    cloud_id:
+      record.cloud_id ??
+      existing?.cloud_id ??
+      null,
+
+    updated_at:
+      options.keepUpdatedAt
+        ? (
+            record.updated_at ||
+            existing?.updated_at ||
+            nowISO()
+          )
+        : nowISO(),
+
+    deleted_at:
+      record.deleted_at ??
+      existing?.deleted_at ??
+      null,
+
+    sync_status:
+      options.syncStatus ||
+      record.sync_status ||
+      existing?.sync_status ||
+      "pending"
+
+  };
+
+}
+
+
+/* =========================================================
+   QUEUE
+========================================================= */
+
+async function queueSync(
+  entity,
+  clientUid,
+  action = "upsert"
+) {
+
+  const id =
+    `${entity}:${clientUid}`;
+
+
+  const old =
+    await dbGet(
+      STORE_SYNC_QUEUE,
+      id
+    );
+
+
+  const item = {
+
+    id,
+
+    entity,
+
+    client_uid:
+      clientUid,
+
+    action,
+
+    created_at:
+      old?.created_at ||
+      nowISO(),
+
+    updated_at:
+      nowISO(),
+
+    retry_count:
+      old?.retry_count ||
+      0,
+
+    last_error:
+      null
+
+  };
+
+
+  await dbPut(
+    STORE_SYNC_QUEUE,
+    item
+  );
+
+
+  const storeName =
+    entityStoreName(
+      entity
+    );
+
+
+  const record =
+    await dbGet(
+      storeName,
+      clientUid
+    );
+
+
+  if (
+    record
+  ) {
+
+    record.sync_status =
+      "pending";
+
+
+    await dbPut(
+      storeName,
+      record
+    );
+
+  }
+
+
+  await updateSyncStatusUI();
+
+}
+
+
+/* =========================================================
+   REMOVE QUEUE
+========================================================= */
+
+async function removeQueueItem(
+  entity,
+  clientUid
+) {
+
+  await dbDelete(
+    STORE_SYNC_QUEUE,
+    `${entity}:${clientUid}`
+  );
+
+}
+
+
+/* =========================================================
+   SAVE LOCAL
+========================================================= */
+
+async function saveLocalRecord(
+  entity,
+  record,
+  options = {}
+) {
+
+  const storeName =
+    entityStoreName(
+      entity
+    );
+
+
+  if (
+    !storeName
+  ) {
+
+    throw new Error(
+      "未知資料類型：" +
+      entity
+    );
+
+  }
+
+
+  const existing =
+    record.client_uid
+      ? await dbGet(
+          storeName,
+          record.client_uid
+        )
+      : null;
+
+
+  const normalized =
+    normalizeLocalRecord(
+      record,
+      existing,
+      {
+
+        keepUpdatedAt:
+          options.keepUpdatedAt ===
+          true,
+
+        syncStatus:
+          options.syncStatus ||
+          "pending"
+
+      }
+    );
+
+
+  await dbPut(
+    storeName,
+    normalized
+  );
+
+
+  if (
+    options.queue !==
+    false
+  ) {
+
+    await queueSync(
+
+      entity,
+
+      normalized.client_uid,
+
+      normalized.deleted_at
+        ? "delete"
+        : "upsert"
+
+    );
+
+  }
+
+
+  return normalized;
+
+}
+
+
+/* =========================================================
+   LOCAL SOFT DELETE
+========================================================= */
+
+async function softDeleteLocalRecord(
+  entity,
+  clientUid
+) {
+
+  const storeName =
+    entityStoreName(
+      entity
+    );
+
+
+  const record =
+    await dbGet(
+      storeName,
+      clientUid
+    );
+
+
+  if (
+    !record
+  ) {
+
+    return;
+
+  }
+
+
+  const timestamp =
+    nowISO();
+
+
+  record.deleted_at =
+    timestamp;
+
+
+  record.updated_at =
+    timestamp;
+
+
+  record.sync_status =
+    "pending";
+
+
+  await dbPut(
+    storeName,
+    record
+  );
+
+
+  await queueSync(
+    entity,
+    clientUid,
+    "delete"
+  );
+
+}
+
+
+/* =========================================================
+   FIND LOCAL BY CLOUD ID
+========================================================= */
+
+async function findLocalByCloudId(
+  storeName,
+  cloudId
+) {
+
+  if (
+    cloudId === null ||
+    cloudId === undefined
+  ) {
+
+    return null;
+
+  }
+
+
+  const records =
+    await dbGetAll(
+      storeName
+    );
+
+
+  return (
+    records.find(
+      item =>
+        Number(
+          item.cloud_id
+        ) ===
+        Number(
+          cloudId
+        )
+    ) ||
+    null
+  );
+
+}
+
+
+/* =========================================================
+   CLOUD ID → CLIENT UID
+========================================================= */
+
+async function findClientUidByCloudId(
+  storeName,
+  cloudId
+) {
+
+  const record =
+    await findLocalByCloudId(
+      storeName,
+      cloudId
+    );
+
+
+  return record?.client_uid ||
+    null;
+
+}
+
+
+/* =========================================================
+   SERVER → LOCAL RECORD
+========================================================= */
+
+async function serverRecordToLocal(
+  entity,
+  serverRecord
+) {
+
+  const local = {
+
+    ...serverRecord,
+
+    cloud_id:
+      serverRecord.id,
+
+    client_uid:
+      serverRecord.client_uid,
+
+    sync_status:
+      "synced"
+
+  };
+
+
+  delete local.id;
+
+
+  if (
+    entity !== "trips"
+  ) {
+
+    local.trip_client_uid =
+      await findClientUidByCloudId(
+        STORE_TRIPS,
+        serverRecord.trip_id
+      );
+
+  }
+
+
+  if (
+    entity ===
+    "footprints"
+  ) {
+
+    local.previous_client_uid =
+      await findClientUidByCloudId(
+        STORE_FOOTPRINTS,
+        serverRecord.previous_record_id
+      );
+
+  }
+
+
+  if (
+    entity ===
+    "expenses" &&
+    serverRecord.source_type ===
+    "food"
+  ) {
+
+    local.source_client_uid =
+      await findClientUidByCloudId(
+        STORE_FOOD,
+        serverRecord.source_id
+      );
+
+  }
+
+
+  return local;
+
+}
+
+
+/* =========================================================
+   RECONCILE CANONICAL UID
+========================================================= */
+
+async function reconcileCanonicalUid(
+  entity,
+  originalUid,
+  serverRecord
+) {
+
+  const storeName =
+    entityStoreName(
+      entity
+    );
+
+
+  if (
+    !serverRecord?.client_uid
+  ) {
+
+    return;
+
+  }
+
+
+  const canonicalUid =
+    serverRecord.client_uid;
+
+
+  /*
+    正常：
+    UID 沒變。
+  */
+
+  if (
+    canonicalUid ===
+    originalUid
+  ) {
+
+    const local =
+      await serverRecordToLocal(
+        entity,
+        serverRecord
+      );
+
+
+    await dbPut(
+      storeName,
+      local
+    );
+
+
+    await removeQueueItem(
+      entity,
+      originalUid
+    );
+
+
+    return;
+
+  }
+
+
+  /*
+    舊 backup / 舊 Local UID
+    與 D1 canonical UID 不同。
+  */
+
+  const temporary =
+    await dbGet(
+      storeName,
+      originalUid
+    );
+
+
+  const canonicalExisting =
+    await dbGet(
+      storeName,
+      canonicalUid
+    );
+
+
+  const converted =
+    await serverRecordToLocal(
+      entity,
+      serverRecord
+    );
+
+
+  await dbPut(
+    storeName,
+    {
+
+      ...temporary,
+
+      ...canonicalExisting,
+
+      ...converted,
+
+      client_uid:
+        canonicalUid,
+
+      cloud_id:
+        serverRecord.id,
+
+      sync_status:
+        "synced"
+
+    }
+  );
+
+
+  await dbDelete(
+    storeName,
+    originalUid
+  );
+
+
+  await removeQueueItem(
+    entity,
+    originalUid
+  );
+
+
+  await removeQueueItem(
+    entity,
+    canonicalUid
+  );
+
+
+  /*
+    修正 Local 關聯。
+  */
+
+  if (
+    entity ===
+    "trips"
+  ) {
+
+    const relationStores = [
+
+      STORE_FOOTPRINTS,
+      STORE_FOOD,
+      STORE_EXPENSES
+
+    ];
+
+
+    for (
+      const relationStore of
+      relationStores
+    ) {
+
+      const records =
+        await dbGetAll(
+          relationStore
+        );
+
+
+      for (
+        const record of
+        records
+      ) {
+
+        if (
+          record.trip_client_uid ===
+          originalUid
+        ) {
+
+          record.trip_client_uid =
+            canonicalUid;
+
+
+          await dbPut(
+            relationStore,
+            record
+          );
+
+        }
+
+      }
+
+    }
+
+  }
+
+
+  if (
+    entity ===
+    "footprints"
+  ) {
+
+    const records =
+      await dbGetAll(
+        STORE_FOOTPRINTS
+      );
+
+
+    for (
+      const record of
+      records
+    ) {
+
+      if (
+        record.previous_client_uid ===
+        originalUid
+      ) {
+
+        record.previous_client_uid =
+          canonicalUid;
+
+
+        await dbPut(
+          STORE_FOOTPRINTS,
+          record
+        );
+
+      }
+
+    }
+
+  }
+
+
+  if (
+    entity ===
+    "food_records"
+  ) {
+
+    const records =
+      await dbGetAll(
+        STORE_EXPENSES
+      );
+
+
+    for (
+      const record of
+      records
+    ) {
+
+      if (
+        record.source_type ===
+        "food" &&
+        record.source_client_uid ===
+        originalUid
+      ) {
+
+        record.source_client_uid =
+          canonicalUid;
+
+
+        await dbPut(
+          STORE_EXPENSES,
+          record
+        );
+
+      }
+
+    }
+
+  }
+
+}
+
+
+/* =========================================================
+   MERGE SERVER RECORD
+========================================================= */
+
+async function mergeServerRecord(
+  entity,
+  serverRecord
+) {
+
+  if (
+    !serverRecord?.client_uid
+  ) {
+
+    return;
+
+  }
+
+
+  const storeName =
+    entityStoreName(
+      entity
+    );
+
+
+  const existing =
+    await dbGet(
+      storeName,
+      serverRecord.client_uid
+    );
+
+
+  const serverTime =
+    parseSyncTime(
+      serverRecord.updated_at
+    );
+
+
+  const localTime =
+    parseSyncTime(
+      existing?.updated_at
+    );
+
+
+  /*
+    Local 有未同步修改，
+    而且比 Server 新：
+    Local 保留。
+  */
+
+  if (
+    existing &&
+    [
+      "pending",
+      "syncing",
+      "error"
+    ]
+    .includes(
+      existing.sync_status
+    ) &&
+    !Number.isNaN(
+      localTime
+    ) &&
+    !Number.isNaN(
+      serverTime
+    ) &&
+    localTime >
+    serverTime
+  ) {
+
+    return;
+
+  }
+
+
+  const local =
+    await serverRecordToLocal(
+      entity,
+      serverRecord
+    );
+
+
+  await dbPut(
+    storeName,
+    {
+
+      ...existing,
+
+      ...local,
+
+      sync_status:
+        "synced"
+
+    }
+  );
+
+
+  await removeQueueItem(
+    entity,
+    serverRecord.client_uid
+  );
+
+}
+
+
+/* =========================================================
+   PREPARE SYNC DATA
+========================================================= */
+
+function prepareSyncData(
+  entity,
+  record
+) {
+
+  const data = {
+
+    ...record
+
+  };
+
+
+  delete data.sync_status;
+
+  delete data.cloud_id;
+
+
+  if (
+    entity !==
+    "trips"
+  ) {
+
+    data.trip_client_uid =
+      record.trip_client_uid ||
+      null;
+
+
+    delete data.trip_id;
+
+  }
+
+
+  if (
+    entity ===
+    "footprints"
+  ) {
+
+    data.previous_client_uid =
+      record.previous_client_uid ||
+      null;
+
+
+    delete data.previous_record_id;
+
+  }
+
+
+  if (
+    entity ===
+    "expenses"
+  ) {
+
+    data.source_client_uid =
+      record.source_client_uid ||
+      null;
+
+
+    if (
+      record.source_client_uid
+    ) {
+
+      delete data.source_id;
+
+    }
+
+  }
+
+
+  return data;
+
+}
+
+
+/* =========================================================
+   SYNC UPSERT
+========================================================= */
+
+async function syncUpsertItem(
+  queueItem
+) {
+
+  const storeName =
+    entityStoreName(
+      queueItem.entity
+    );
+
+
+  const record =
+    await dbGet(
+      storeName,
+      queueItem.client_uid
+    );
+
+
+  if (
+    !record
+  ) {
+
+    await removeQueueItem(
+      queueItem.entity,
+      queueItem.client_uid
+    );
+
+    return;
+
+  }
+
+
+  const originalUid =
+    record.client_uid;
+
+
+  record.sync_status =
+    "syncing";
+
+
+  await dbPut(
+    storeName,
+    record
+  );
+
+
+  await updateSyncStatusUI();
+
+
+  const result =
+    await api(
+      "/api/sync/upsert",
+      {
+
+        method:
+          "POST",
+
+        body:
+          JSON.stringify(
+            {
+
+              entity:
+                queueItem.entity,
+
+              client_uid:
+                record.client_uid,
+
+              cloud_id:
+                record.cloud_id,
+
+              updated_at:
+                record.updated_at,
+
+              data:
+                prepareSyncData(
+                  queueItem.entity,
+                  record
+                )
+
+            }
+          )
+
+      }
+    );
+
+
+  if (
+    result.record
+  ) {
+
+    await reconcileCanonicalUid(
+
+      queueItem.entity,
+
+      originalUid,
+
+      result.record
+
+    );
+
+
+    return;
+
+  }
+
+
+  record.cloud_id =
+    result.cloud_id ??
+    record.cloud_id;
+
+
+  record.sync_status =
+    "synced";
+
+
+  await dbPut(
+    storeName,
+    record
+  );
+
+
+  await removeQueueItem(
+    queueItem.entity,
+    originalUid
+  );
+
+}
+
+
+/* =========================================================
+   SYNC DELETE
+========================================================= */
+
+async function syncDeleteItem(
+  queueItem
+) {
+
+  const storeName =
+    entityStoreName(
+      queueItem.entity
+    );
+
+
+  const record =
+    await dbGet(
+      storeName,
+      queueItem.client_uid
+    );
+
+
+  if (
+    !record
+  ) {
+
+    await removeQueueItem(
+      queueItem.entity,
+      queueItem.client_uid
+    );
+
+    return;
+
+  }
+
+
+  record.sync_status =
+    "syncing";
+
+
+  await dbPut(
+    storeName,
+    record
+  );
+
+
+  await updateSyncStatusUI();
+
+
+  const result =
+    await api(
+      "/api/sync/delete",
+      {
+
+        method:
+          "POST",
+
+        body:
+          JSON.stringify(
+            {
+
+              entity:
+                queueItem.entity,
+
+              client_uid:
+                record.client_uid,
+
+              updated_at:
+                record.updated_at,
+
+              deleted_at:
+                record.deleted_at
+
+            }
+          )
+
+      }
+    );
+
+
+  if (
+    result.result ===
+    "server_wins" &&
+    result.record
+  ) {
+
+    await mergeServerRecord(
+      queueItem.entity,
+      result.record
+    );
+
+
+    return;
+
+  }
+
+
+  record.cloud_id =
+    result.cloud_id ??
+    record.cloud_id;
+
+
+  record.sync_status =
+    "synced";
+
+
+  await dbPut(
+    storeName,
+    record
+  );
+
+
+  await removeQueueItem(
+    queueItem.entity,
+    queueItem.client_uid
+  );
+
+}
+
+
+/* =========================================================
+   SYNC ERROR
+========================================================= */
+
+async function markQueueError(
+  queueItem,
+  error
+) {
+
+  const storeName =
+    entityStoreName(
+      queueItem.entity
+    );
+
+
+  const record =
+    await dbGet(
+      storeName,
+      queueItem.client_uid
+    );
+
+
+  if (
+    record
+  ) {
+
+    record.sync_status =
+      "error";
+
+
+    await dbPut(
+      storeName,
+      record
+    );
+
+  }
+
+
+  queueItem.retry_count =
+    Number(
+      queueItem.retry_count ||
+      0
+    ) +
+    1;
+
+
+  queueItem.last_error =
+    error?.message ||
+    String(
+      error
+    );
+
+
+  queueItem.updated_at =
+    nowISO();
+
+
+  await dbPut(
+    STORE_SYNC_QUEUE,
+    queueItem
+  );
+
+}
+
+
+/* =========================================================
+   PUSH LOCAL → D1
+========================================================= */
+
+async function pushPendingChanges() {
+
+  const queue =
+    await dbGetAll(
+      STORE_SYNC_QUEUE
+    );
+
+
+  if (
+    !queue.length
+  ) {
+
+    return;
+
+  }
+
+
+  const priority = {
+
+    trips:
+      1,
+
+    footprints:
+      2,
+
+    food_records:
+      2,
+
+    expenses:
+      3
+
+  };
+
+
+  queue.sort(
+    (
+      a,
+      b
+    ) => {
+
+      const aPriority =
+        priority[
+          a.entity
+        ] ||
+        9;
+
+
+      const bPriority =
+        priority[
+          b.entity
+        ] ||
+        9;
+
+
+      if (
+        aPriority !==
+        bPriority
+      ) {
+
+        return aPriority -
+          bPriority;
+
+      }
+
+
+      return String(
+        a.created_at
+      )
+      .localeCompare(
+        String(
+          b.created_at
+        )
+      );
+
+    }
+  );
+
+
+  for (
+    const item of
+    queue
+  ) {
+
+    try {
+
+      if (
+        item.action ===
+        "delete"
+      ) {
+
+        await syncDeleteItem(
+          item
+        );
+
+      }
+      else {
+
+        await syncUpsertItem(
+          item
+        );
+
+      }
+
+    }
+    catch (
+      error
+    ) {
+
+      console.error(
+        "Push sync error:",
+        item,
+        error
+      );
+
+
+      await markQueueError(
+        item,
+        error
+      );
+
+    }
+
+  }
+
+}
+
+
+/* =========================================================
+   PULL D1 → LOCAL
+========================================================= */
+
+async function pullCloudChanges() {
+
+  const since =
+    await getMeta(
+      "last_sync_server_time",
+      "1970-01-01T00:00:00.000Z"
+    );
+
+
+  const result =
+    await api(
+
+      "/api/sync/changes?since=" +
+
+      encodeURIComponent(
+        since
+      )
+
+    );
+
+
+  /*
+    Trips 一定要先 merge。
+  */
+
+  for (
+    const record of
+    result.trips ||
+    []
+  ) {
+
+    await mergeServerRecord(
+      "trips",
+      record
+    );
+
+  }
+
+
+  for (
+    const record of
+    result.footprints ||
+    []
+  ) {
+
+    await mergeServerRecord(
+      "footprints",
+      record
+    );
+
+  }
+
+
+  for (
+    const record of
+    result.food_records ||
+    []
+  ) {
+
+    await mergeServerRecord(
+      "food_records",
+      record
+    );
+
+  }
+
+
+  for (
+    const record of
+    result.expenses ||
+    []
+  ) {
+
+    await mergeServerRecord(
+      "expenses",
+      record
+    );
+
+  }
+
+
+  /*
+    Footprint 前後站第二輪修復。
+  */
+
+  for (
+    const record of
+    result.footprints ||
+    []
+  ) {
+
+    const local =
+      await dbGet(
+        STORE_FOOTPRINTS,
+        record.client_uid
+      );
+
+
+    if (
+      !local
+    ) {
+
+      continue;
+
+    }
+
+
+    local.previous_client_uid =
+      await findClientUidByCloudId(
+        STORE_FOOTPRINTS,
+        record.previous_record_id
+      );
+
+
+    await dbPut(
+      STORE_FOOTPRINTS,
+      local
+    );
+
+  }
+
+
+  /*
+    Expense food source 第二輪修復。
+  */
+
+  for (
+    const record of
+    result.expenses ||
+    []
+  ) {
+
+    if (
+      record.source_type !==
+      "food"
+    ) {
+
+      continue;
+
+    }
+
+
+    const local =
+      await dbGet(
+        STORE_EXPENSES,
+        record.client_uid
+      );
+
+
+    if (
+      !local
+    ) {
+
+      continue;
+
+    }
+
+
+    local.source_client_uid =
+      await findClientUidByCloudId(
+        STORE_FOOD,
+        record.source_id
+      );
+
+
+    await dbPut(
+      STORE_EXPENSES,
+      local
+    );
+
+  }
+
+
+  if (
+    result.server_time
+  ) {
+
+    await setMeta(
+      "last_sync_server_time",
+      result.server_time
+    );
+
+  }
+
+
+  await setMeta(
+    "last_sync_success",
+    nowISO()
+  );
+
+}
+
+
+/* =========================================================
+   REFRESH LOCAL CACHE
+========================================================= */
+
+async function refreshLocalCache() {
+
+  const [
+    tripRows,
+    footprintRows,
+    foodRows,
+    expenseRows
+  ] =
+  await Promise.all([
+
+    dbGetAll(
+      STORE_TRIPS
+    ),
+
+    dbGetAll(
+      STORE_FOOTPRINTS
+    ),
+
+    dbGetAll(
+      STORE_FOOD
+    ),
+
+    dbGetAll(
+      STORE_EXPENSES
+    )
+
+  ]);
+
+
+  trips =
+    tripRows.filter(
+      item =>
+        !item.deleted_at
+    );
+
+
+  footprints =
+    footprintRows.filter(
+      item =>
+        !item.deleted_at
+    );
+
+
+  foodRecords =
+    foodRows.filter(
+      item =>
+        !item.deleted_at
+    );
+
+
+  expenses =
+    expenseRows.filter(
+      item =>
+        !item.deleted_at
+    );
+
+}
+
+
+/* =========================================================
+   SYNC COUNTS
+========================================================= */
+
+async function getSyncCounts() {
+
+  const records = [
+
+    ...await dbGetAll(
+      STORE_TRIPS
+    ),
+
+    ...await dbGetAll(
+      STORE_FOOTPRINTS
+    ),
+
+    ...await dbGetAll(
+      STORE_FOOD
+    ),
+
+    ...await dbGetAll(
+      STORE_EXPENSES
+    )
+
+  ];
+
+
+  const counts = {
+
+    synced:
+      0,
+
+    pending:
+      0,
+
+    syncing:
+      0,
+
+    error:
+      0
+
+  };
+
+
+  records.forEach(
+    record => {
+
+      const status =
+        record.sync_status ||
+        "synced";
+
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          counts,
+          status
+        )
+      ) {
+
+        counts[
+          status
+        ]++;
+
+      }
+
+    }
+  );
+
+
+  return counts;
+
+}
+
+
+/* =========================================================
+   HEADER STATUS
+========================================================= */
+
+function updateNetworkUI() {
+
+  const dot =
+    document.getElementById(
+      "onlineDot"
+    );
+
+
+  const text =
+    document.getElementById(
+      "onlineText"
+    );
+
+
+  if (
+    navigator.onLine
+  ) {
+
+    dot.className =
+      "status-dot ok";
+
+
+    text.textContent =
+      "網路連線";
+
+  }
+  else {
+
+    dot.className =
+      "status-dot error";
+
+
+    text.textContent =
+      "離線模式";
+
+  }
+
+}
+
+
+function updateCloudHeader(
+  state,
+  text
+) {
+
+  document
+    .getElementById(
+      "cloudDot"
+    )
+    .className =
+    `status-dot ${state}`;
+
+
+  document
+    .getElementById(
+      "cloudText"
+    )
+    .textContent =
+    text;
+
+}
+
+
+function updateSyncHeader(
+  state,
+  text
+) {
+
+  document
+    .getElementById(
+      "syncDot"
+    )
+    .className =
+    `status-dot ${state}`;
+
+
+  document
+    .getElementById(
+      "syncText"
+    )
+    .textContent =
+    text;
+
+}
+
+
+/* =========================================================
+   SYNC UI
+========================================================= */
+
+async function updateSyncStatusUI() {
+
+  if (
+    !db
+  ) {
+
+    return;
+
+  }
+
+
+  const counts =
+    await getSyncCounts();
+
+
+  document
+    .getElementById(
+      "syncSyncedCount"
+    )
+    .textContent =
+    counts.synced;
+
+
+  document
+    .getElementById(
+      "syncPendingCount"
+    )
+    .textContent =
+    counts.pending;
+
+
+  document
+    .getElementById(
+      "syncSyncingCount"
+    )
+    .textContent =
+    counts.syncing;
+
+
+  document
+    .getElementById(
+      "syncErrorCount"
+    )
+    .textContent =
+    counts.error;
+
+
+  const lastSync =
+    await getMeta(
+      "last_sync_success",
+      null
+    );
+
+
+  document
+    .getElementById(
+      "lastSyncText"
+    )
+    .textContent =
+
+    lastSync
+      ? "最後同步：" +
+        new Date(
+          lastSync
+        )
+        .toLocaleString(
+          "zh-TW"
+        )
+
+      : "尚未完成同步";
+
+
+  if (
+    syncRunning
+  ) {
+
+    updateSyncHeader(
+      "syncing",
+      "同步中..."
+    );
+
+  }
+  else if (
+    counts.error >
+    0
+  ) {
+
+    updateSyncHeader(
+      "error",
+      `${counts.error} 筆同步失敗`
+    );
+
+  }
+  else if (
+    counts.pending >
+    0
+  ) {
+
+    updateSyncHeader(
+      "pending",
+      `${counts.pending} 筆待同步`
+    );
+
+  }
+  else {
+
+    updateSyncHeader(
+      "ok",
+      "已同步"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   CLOUD TEST
+========================================================= */
+
+async function testCloudConnection() {
+
+  if (
+    !navigator.onLine
+  ) {
+
+    updateCloudHeader(
+      "error",
+      "D1 離線"
+    );
+
+    return false;
+
+  }
+
+
+  try {
+
+    const result =
+      await api(
+        "/"
+      );
+
+
+    if (
+      result.version ===
+      EXPECTED_API_VERSION
+    ) {
+
+      updateCloudHeader(
+        "ok",
+        "D1 " +
+        result.version
+      );
+
+    }
+    else {
+
+      updateCloudHeader(
+        "pending",
+        "API " +
+        (
+          result.version ||
+          "未知"
+        )
+      );
+
+    }
+
+
+    return true;
+
+  }
+  catch (
+    error
+  ) {
+
+    updateCloudHeader(
+      "error",
+      "D1 無法連線"
+    );
+
+
+    return false;
+
+  }
+
+}
+
+
+/* =========================================================
+   FULL SYNC
+========================================================= */
+
+async function syncNow(
+  options = {}
+) {
+
+  if (
+    syncRunning
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    !navigator.onLine
+  ) {
+
+    updateNetworkUI();
+
+    await updateSyncStatusUI();
+
+    return;
+
+  }
+
+
+  syncRunning =
+    true;
+
+
+  updateSyncHeader(
+    "syncing",
+    "同步中..."
+  );
+
+
+  try {
+
+    /*
+      先 push Local，
+      再 pull Cloud，
+      再 retry push。
+    */
+
+    await pushPendingChanges();
+
+
+    await pullCloudChanges();
+
+
+    await pushPendingChanges();
+
+
+    await refreshLocalCache();
+
+
+    renderAll();
+
+
+    await updateSyncStatusUI();
+
+
+    updateSyncHeader(
+      "ok",
+      "同步完成"
+    );
+
+
+    if (
+      options.manual
+    ) {
+
+      showToast(
+        "☁️ 同步完成"
+      );
+
+    }
+
+  }
+  catch (
+    error
+  ) {
+
+    console.error(
+      "Full sync error:",
+      error
+    );
+
+
+    updateSyncHeader(
+      "error",
+      "同步失敗"
+    );
+
+
+    await updateSyncStatusUI();
+
+
+    if (
+      options.manual
+    ) {
+
+      showMessage(
+        "同步失敗，但本機資料仍保留：" +
+        error.message,
+        "error"
+      );
+
+    }
+
+  }
+  finally {
+
+    syncRunning =
+      false;
+
+  }
+
+}
+
+
+/* =========================================================
+   SAVE + IMMEDIATE SYNC
+========================================================= */
+
+async function saveAndSync(
+  entity,
+  record
+) {
+
+  const saved =
+    await saveLocalRecord(
+      entity,
+      record
+    );
+
+
+  await refreshLocalCache();
+
+
+  renderAll();
+
+
+  await updateSyncStatusUI();
+
+
+  if (
+    navigator.onLine
+  ) {
+
+    setTimeout(
+      () =>
+        syncNow(),
+      0
+    );
+
+  }
+
+
+  return saved;
+
+}
+
+
+/* =========================================================
+   DELETE + IMMEDIATE SYNC
+========================================================= */
+
+async function deleteAndSync(
+  entity,
+  clientUid
+) {
+
+  await softDeleteLocalRecord(
+    entity,
+    clientUid
+  );
+
+
+  await refreshLocalCache();
+
+
+  renderAll();
+
+
+  await updateSyncStatusUI();
+
+
+  if (
+    navigator.onLine
+  ) {
+
+    setTimeout(
+      () =>
+        syncNow(),
+      0
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   RECOVER INTERRUPTED SYNC
+========================================================= */
+
+async function recoverInterruptedSync() {
+
+  const entities = [
+
+    [
+      "trips",
+      STORE_TRIPS
+    ],
+
+    [
+      "footprints",
+      STORE_FOOTPRINTS
+    ],
+
+    [
+      "food_records",
+      STORE_FOOD
+    ],
+
+    [
+      "expenses",
+      STORE_EXPENSES
+    ]
+
+  ];
+
+
+  for (
+    const [
+      entity,
+      storeName
+    ] of
+    entities
+  ) {
+
+    const records =
+      await dbGetAll(
+        storeName
+      );
+
+
+    for (
+      const record of
+      records
+    ) {
+
+      if (
+        record.sync_status !==
+        "syncing"
+      ) {
+
+        continue;
+
+      }
+
+
+      record.sync_status =
+        "pending";
+
+
+      await dbPut(
+        storeName,
+        record
+      );
+
+
+      await queueSync(
+
+        entity,
+
+        record.client_uid,
+
+        record.deleted_at
+          ? "delete"
+          : "upsert"
+
+      );
+
+    }
+
+  }
+
+}
+
+
+/* =========================================================
+   NETWORK EVENTS
+========================================================= */
+
+window.addEventListener(
+  "online",
+  async () => {
+
+    updateNetworkUI();
+
+
+    const cloudOK =
+      await testCloudConnection();
+
+
+    if (
+      cloudOK
+    ) {
+
+      setTimeout(
+        () =>
+          syncNow(),
+        400
+      );
+
+    }
+
+  }
+);
+
+
+window.addEventListener(
+  "offline",
+  () => {
+
+    updateNetworkUI();
+
+
+    updateCloudHeader(
+      "error",
+      "D1 離線"
+    );
+
+  }
+);
+
+
+/* =========================================================
+   MANUAL SYNC
+========================================================= */
+
+document
+  .getElementById(
+    "manualSyncButton"
+  )
+  .addEventListener(
+    "click",
+    async () => {
+
+      const button =
+        document.getElementById(
+          "manualSyncButton"
+        );
+
+
+      button.disabled =
+        true;
+
+
+      button.textContent =
+        "🔄 同步中...";
+
+
+      try {
+
+        await syncNow(
+          {
+            manual:
+              true
+          }
+        );
+
+      }
+      finally {
+
+        button.disabled =
+          false;
+
+
+        button.textContent =
+          "🔄 立即同步";
+
+      }
+
+    }
+  );
+/* =========================================================
+   UI HELPERS
 ========================================================= */
 
 function escapeHtml(
@@ -2940,11 +5957,8 @@ function showMessage(
 
   window.scrollTo(
     {
-      top:
-        0,
-
-      behavior:
-        "smooth"
+      top: 0,
+      behavior: "smooth"
     }
   );
 
@@ -2976,6 +5990,18 @@ function confirmDialog(
         );
 
 
+      const ok =
+        document.getElementById(
+          "confirmOk"
+        );
+
+
+      const cancel =
+        document.getElementById(
+          "confirmCancel"
+        );
+
+
       document
         .getElementById(
           "confirmTitle"
@@ -2990,18 +6016,6 @@ function confirmDialog(
         )
         .textContent =
         message;
-
-
-      const ok =
-        document.getElementById(
-          "confirmOk"
-        );
-
-
-      const cancel =
-        document.getElementById(
-          "confirmCancel"
-        );
 
 
       modal
@@ -3118,8 +6132,18 @@ document
           ) {
 
             setTimeout(
-              () =>
-                footprintMap.invalidateSize(),
+              () => {
+
+                if (
+                  footprintMap
+                ) {
+
+                  footprintMap
+                    .invalidateSize();
+
+                }
+
+              },
               150
             );
 
@@ -3145,7 +6169,7 @@ document
 
 
 /* =========================================================
-   SYNC BADGE HTML
+   SYNC BADGE
 ========================================================= */
 
 function syncBadgeHtml(
@@ -3154,41 +6178,37 @@ function syncBadgeHtml(
 
   const map = {
 
-    synced:
-      {
-        icon:
-          "☁️",
+    synced: {
+      icon:
+        "☁️",
 
-        text:
-          "已同步"
-      },
+      text:
+        "已同步"
+    },
 
-    pending:
-      {
-        icon:
-          "⏳",
+    pending: {
+      icon:
+        "⏳",
 
-        text:
-          "待同步"
-      },
+      text:
+        "待同步"
+    },
 
-    syncing:
-      {
-        icon:
-          "🔄",
+    syncing: {
+      icon:
+        "🔄",
 
-        text:
-          "同步中"
-      },
+      text:
+        "同步中"
+    },
 
-    error:
-      {
-        icon:
-          "⚠️",
+    error: {
+      icon:
+        "⚠️",
 
-        text:
-          "同步失敗"
-      }
+      text:
+        "同步失敗"
+    }
 
   };
 
@@ -3215,7 +6235,7 @@ function syncBadgeHtml(
 
 
 /* =========================================================
-   FORMAT
+   FORMAT HELPERS
 ========================================================= */
 
 function formatMoney(
@@ -3349,12 +6369,14 @@ function getTripByUid(
   clientUid
 ) {
 
-  return trips.find(
-    item =>
-      item.client_uid ===
-      clientUid
-  ) ||
-  null;
+  return (
+    trips.find(
+      item =>
+        item.client_uid ===
+        clientUid
+    ) ||
+    null
+  );
 
 }
 
@@ -3383,19 +6405,12 @@ function tripNameByUid(
 
 
 /* =========================================================
-   TRIP SELECT OPTIONS
+   TRIP SELECTORS
 ========================================================= */
 
 function renderTripSelectors() {
 
-  const html =
-
-    `
-      <option value="">
-        未分類旅程
-      </option>
-    ` +
-
+  const sortedTrips =
     trips
       .slice()
       .sort(
@@ -3413,7 +6428,18 @@ function renderTripSelectors() {
               ""
             )
           )
-      )
+      );
+
+
+  const html =
+
+    `
+      <option value="">
+        未分類旅程
+      </option>
+    ` +
+
+    sortedTrips
       .map(
         trip => `
 
@@ -3457,7 +6483,7 @@ function renderTripSelectors() {
       }
 
 
-      const old =
+      const oldValue =
         select.value;
 
 
@@ -3465,19 +6491,24 @@ function renderTripSelectors() {
         html;
 
 
+      const exists =
+        Array
+          .from(
+            select.options
+          )
+          .some(
+            option =>
+              option.value ===
+              oldValue
+          );
+
+
       if (
-        [
-          ...select.options
-        ]
-        .some(
-          option =>
-            option.value ===
-            old
-        )
+        exists
       ) {
 
         select.value =
-          old;
+          oldValue;
 
       }
 
@@ -3488,42 +6519,70 @@ function renderTripSelectors() {
 
 
 /* =========================================================
-   MAP
+   MAP INIT
 ========================================================= */
 
-const footprintMap =
-  L.map(
-    "footprintMap"
-  )
-  .setView(
-    [
-      23.7,
-      121
-    ],
-    6
-  );
-
-
-L.tileLayer(
-  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  {
-    maxZoom:
-      19,
-
-    attribution:
-      "© OpenStreetMap"
-  }
-)
-.addTo(
-  footprintMap
-);
+let footprintMap =
+  null;
 
 
 let footprintMapLayers =
   [];
 
 
+function initializeMap() {
+
+  if (
+    !window.L
+  ) {
+
+    throw new Error(
+      "Leaflet 載入失敗"
+    );
+
+  }
+
+
+  footprintMap =
+    L.map(
+      "footprintMap"
+    )
+    .setView(
+      [
+        23.7,
+        121
+      ],
+      6
+    );
+
+
+  L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom:
+        19,
+
+      attribution:
+        "© OpenStreetMap"
+    }
+  )
+  .addTo(
+    footprintMap
+  );
+
+}
+
+
 function clearFootprintMap() {
+
+  if (
+    !footprintMap
+  ) {
+
+    return;
+
+  }
+
 
   footprintMapLayers
     .forEach(
@@ -3594,7 +6653,7 @@ function getGPSPosition() {
 
         reject(
           new Error(
-            "此裝置不支援 GPS"
+            "此瀏覽器不支援 GPS"
           )
         );
 
@@ -3657,7 +6716,7 @@ async function reverseGeocode(
 
 
 /* =========================================================
-   FOOTPRINT TYPE
+   FOOTPRINT TYPE SELECT
 ========================================================= */
 
 document
@@ -3773,7 +6832,7 @@ document
 
         try {
 
-          const geo =
+          const result =
             await reverseGeocode(
 
               footprintLocation.latitude,
@@ -3784,7 +6843,7 @@ document
 
 
           if (
-            geo.place_name
+            result.place_name
           ) {
 
             document
@@ -3792,13 +6851,13 @@ document
                 "footprintPlace"
               )
               .value =
-              geo.place_name;
+              result.place_name;
 
           }
 
 
           if (
-            geo.address
+            result.address
           ) {
 
             document
@@ -3806,7 +6865,7 @@ document
                 "footprintAddress"
               )
               .value =
-              geo.address;
+              result.address;
 
           }
 
@@ -3816,22 +6875,27 @@ document
         ) {
 
           console.warn(
-            "Reverse geocode failed:",
+            "reverse geocode failed",
             error
           );
 
         }
 
 
-        footprintMap
-          .setView(
-            [
-              footprintLocation.latitude,
-              footprintLocation.longitude
-            ],
-            16
-          );
+        if (
+          footprintMap
+        ) {
 
+          footprintMap
+            .setView(
+              [
+                footprintLocation.latitude,
+                footprintLocation.longitude
+              ],
+              16
+            );
+
+        }
 
       }
       catch (
@@ -3864,14 +6928,14 @@ document
 
 
 /* =========================================================
-   FIND PREVIOUS FOOTPRINT
+   PREVIOUS FOOTPRINT
 ========================================================= */
 
 function getPreviousFootprint(
   tripClientUid
 ) {
 
-  const list =
+  const records =
     footprints
       .filter(
         item =>
@@ -3890,19 +6954,21 @@ function getPreviousFootprint(
           b
         ) =>
           String(
-            a.recorded_at
+            a.recorded_at ||
+            ""
           )
           .localeCompare(
             String(
-              b.recorded_at
+              b.recorded_at ||
+              ""
             )
           )
       );
 
 
-  return list.length
-    ? list[
-        list.length -
+  return records.length
+    ? records[
+        records.length -
         1
       ]
     : null;
@@ -4198,9 +7264,7 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>
-              旅程
-            </label>
+            <label>旅程</label>
 
             <select id="footprintEditTrip">
             </select>
@@ -4210,9 +7274,7 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>
-              類型
-            </label>
+            <label>類型</label>
 
             <select id="footprintEditType">
 
@@ -4232,9 +7294,7 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>
-              地點
-            </label>
+            <label>地點</label>
 
             <input id="footprintEditPlace">
 
@@ -4243,9 +7303,7 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>
-              地址
-            </label>
+            <label>地址</label>
 
             <input id="footprintEditAddress">
 
@@ -4254,9 +7312,7 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>
-              備註
-            </label>
+            <label>備註</label>
 
             <textarea id="footprintEditNote"></textarea>
 
@@ -4268,6 +7324,7 @@ function ensureFootprintEditModal() {
             <button
               id="footprintEditCancel"
               class="btn btn-gray"
+              type="button"
             >
               取消
             </button>
@@ -4275,6 +7332,7 @@ function ensureFootprintEditModal() {
             <button
               id="footprintEditSave"
               class="btn btn-green"
+              type="button"
             >
               儲存修改
             </button>
@@ -4293,33 +7351,37 @@ function ensureFootprintEditModal() {
     .getElementById(
       "footprintEditCancel"
     )
-    .onclick =
-    () => {
+    .addEventListener(
+      "click",
+      () => {
 
-      document
-        .getElementById(
-          "footprintEditModal"
-        )
-        .classList
-        .remove(
-          "show"
-        );
+        document
+          .getElementById(
+            "footprintEditModal"
+          )
+          .classList
+          .remove(
+            "show"
+          );
 
-    };
+      }
+    );
 
 
   document
     .getElementById(
       "footprintEditSave"
     )
-    .onclick =
-    saveFootprintEdit;
+    .addEventListener(
+      "click",
+      saveFootprintEdit
+    );
 
 }
 
 
 /* =========================================================
-   OPEN FOOTPRINT EDIT
+   EDIT FOOTPRINT
 ========================================================= */
 
 function editFootprint(
@@ -4527,11 +7589,6 @@ async function saveFootprintEdit() {
   };
 
 
-  /*
-    移到不同旅程時，
-    不保留舊 previous 關聯。
-  */
-
   if (
     oldTrip !==
     newTrip
@@ -4632,7 +7689,7 @@ async function deleteFootprint(
 
 
 /* =========================================================
-   RENDER FOOTPRINT
+   RENDER FOOTPRINTS
 ========================================================= */
 
 function renderFootprints() {
@@ -4662,11 +7719,13 @@ function renderFootprints() {
           b
         ) =>
           String(
-            a.recorded_at
+            a.recorded_at ||
+            ""
           )
           .localeCompare(
             String(
-              b.recorded_at
+              b.recorded_at ||
+              ""
             )
           )
       );
@@ -4762,17 +7821,17 @@ function renderFootprints() {
         FOOTPRINT_TYPES.other;
 
 
-      const div =
+      const row =
         document.createElement(
           "div"
         );
 
 
-      div.className =
+      row.className =
         "record";
 
 
-      div.innerHTML = `
+      row.innerHTML = `
 
         <div class="record-title">
 
@@ -4855,6 +7914,7 @@ function renderFootprints() {
 
           <button
             class="btn-gray"
+            type="button"
             onclick="editFootprint('${record.client_uid}')"
           >
             ✏️ 編輯
@@ -4862,6 +7922,7 @@ function renderFootprints() {
 
           <button
             class="btn-soft-red"
+            type="button"
             onclick="deleteFootprint('${record.client_uid}')"
           >
             🗑️ 刪除
@@ -4873,110 +7934,113 @@ function renderFootprints() {
 
 
       container.appendChild(
-        div
+        row
       );
 
 
       if (
-        record.latitude != null &&
-        record.longitude != null
+        !footprintMap ||
+        record.latitude == null ||
+        record.longitude == null
       ) {
 
-        const point = [
+        return;
 
-          Number(
-            record.latitude
-          ),
+      }
 
-          Number(
-            record.longitude
+
+      const point = [
+
+        Number(
+          record.latitude
+        ),
+
+        Number(
+          record.longitude
+        )
+
+      ];
+
+
+      const marker =
+        L.marker(
+          point,
+          {
+            icon:
+              routeMarkerIcon(
+                index + 1
+              )
+          }
+        )
+        .addTo(
+          footprintMap
+        )
+        .bindPopup(
+          escapeHtml(
+            record.place_name ||
+            ""
           )
+        );
 
-        ];
+
+      footprintMapLayers.push(
+        marker
+      );
 
 
-        const marker =
-          L.marker(
-            point,
-            {
-              icon:
-                routeMarkerIcon(
-                  index + 1
-                )
-            }
-          )
-          .addTo(
-            footprintMap
-          )
-          .bindPopup(
-            escapeHtml(
-              record.place_name ||
-              ""
-            )
+      mapPoints.push(
+        point
+      );
+
+
+      if (
+        record.link_tracked &&
+        record.previous_client_uid
+      ) {
+
+        const previous =
+          localMap.get(
+            record.previous_client_uid
           );
 
 
-        footprintMapLayers.push(
-          marker
-        );
-
-
-        mapPoints.push(
-          point
-        );
-
-
         if (
-          record.link_tracked &&
-          record.previous_client_uid
+          previous?.latitude != null &&
+          previous?.longitude != null
         ) {
 
-          const previous =
-            localMap.get(
-              record.previous_client_uid
-            );
+          const line =
+            L.polyline(
+              [
 
-
-          if (
-            previous &&
-            previous.latitude != null &&
-            previous.longitude != null
-          ) {
-
-            const line =
-              L.polyline(
                 [
-
-                  [
-                    Number(
-                      previous.latitude
-                    ),
-                    Number(
-                      previous.longitude
-                    )
-                  ],
-
-                  point
-
+                  Number(
+                    previous.latitude
+                  ),
+                  Number(
+                    previous.longitude
+                  )
                 ],
-                {
-                  weight:
-                    4,
 
-                  opacity:
-                    .65
-                }
-              )
-              .addTo(
-                footprintMap
-              );
+                point
 
+              ],
+              {
+                weight:
+                  4,
 
-            footprintMapLayers.push(
-              line
+                opacity:
+                  .65
+              }
+            )
+            .addTo(
+              footprintMap
             );
 
-          }
+
+          footprintMapLayers.push(
+            line
+          );
 
         }
 
@@ -4987,24 +8051,26 @@ function renderFootprints() {
 
 
   if (
+    footprintMap &&
     mapPoints.length
   ) {
 
-    footprintMap.fitBounds(
-      L.latLngBounds(
-        mapPoints
-      ),
-      {
-        padding:
-          [
-            30,
-            30
-          ],
+    footprintMap
+      .fitBounds(
+        L.latLngBounds(
+          mapPoints
+        ),
+        {
+          padding:
+            [
+              30,
+              30
+            ],
 
-        maxZoom:
-          16
-      }
-    );
+          maxZoom:
+            16
+        }
+      );
 
   }
 
@@ -5153,7 +8219,7 @@ document
 
         try {
 
-          const geo =
+          const result =
             await reverseGeocode(
 
               foodLocation.latitude,
@@ -5164,7 +8230,7 @@ document
 
 
           foodAddressDetails =
-            geo.address_details ||
+            result.address_details ||
             null;
 
 
@@ -5175,11 +8241,11 @@ document
 
 
           if (
-            geo.address
+            result.address
           ) {
 
             addressBox.textContent =
-              geo.address;
+              result.address;
 
 
             addressBox.style.display =
@@ -5189,7 +8255,7 @@ document
 
 
           if (
-            geo.place_name &&
+            result.place_name &&
             !document
               .getElementById(
                 "foodShop"
@@ -5202,7 +8268,7 @@ document
                 "foodShop"
               )
               .value =
-              geo.place_name;
+              result.place_name;
 
           }
 
@@ -5212,6 +8278,7 @@ document
         ) {
 
           console.warn(
+            "food reverse geocode failed",
             error
           );
 
@@ -5224,7 +8291,10 @@ document
 
         showMessage(
           "GPS 定位失敗：" +
-          error.message,
+          (
+            error.message ||
+            "無法取得位置"
+          ),
           "error"
         );
 
@@ -5363,11 +8433,17 @@ function resetFoodForm() {
     "尚未取得 GPS";
 
 
-  document
-    .getElementById(
+  const addressBox =
+    document.getElementById(
       "foodAddressBox"
-    )
-    .style.display =
+    );
+
+
+  addressBox.textContent =
+    "";
+
+
+  addressBox.style.display =
     "none";
 
 }
@@ -5458,6 +8534,12 @@ document
       const foodUid =
         editingUid ||
         createUID();
+
+
+      const addressBox =
+        document.getElementById(
+          "foodAddressBox"
+        );
 
 
       const record = {
@@ -5555,25 +8637,11 @@ document
               null,
 
         address:
-          document
-            .getElementById(
-              "foodAddressBox"
-            )
-            .style
-            .display ===
-            "none"
-
-            ? (
-                old?.address ||
-                null
-              )
-
-            : document
-                .getElementById(
-                  "foodAddressBox"
-                )
-                .textContent
-                .trim(),
+          addressBox.style.display ===
+          "none"
+            ? old?.address ??
+              null
+            : addressBox.textContent.trim(),
 
         address_details:
           foodAddressDetails ??
@@ -5605,11 +8673,11 @@ document
 
 
       /*
-        Local-first 美食 → 消費
+        Food → Expense
 
-        不依靠 Worker food POST 自動建 expense，
-        Local 先建立 expense，
-        再由 sync engine 各自上傳。
+        Local-first：
+        先建立 Local expense，
+        再由 sync engine 上 D1。
       */
 
       const syncExpense =
@@ -5776,7 +8844,8 @@ function editFood(
     )
     .value =
     String(
-      record.recorded_at
+      record.recorded_at ||
+      ""
     )
     .slice(
       0,
@@ -5790,7 +8859,8 @@ function editFood(
     )
     .value =
     String(
-      record.recorded_at
+      record.recorded_at ||
+      ""
     )
     .slice(
       11,
@@ -5910,15 +8980,15 @@ function editFood(
     null;
 
 
+  const box =
+    document.getElementById(
+      "foodAddressBox"
+    );
+
+
   if (
     record.address
   ) {
-
-    const box =
-      document.getElementById(
-        "foodAddressBox"
-      );
-
 
     box.textContent =
       record.address;
@@ -5926,6 +8996,16 @@ function editFood(
 
     box.style.display =
       "block";
+
+  }
+  else {
+
+    box.textContent =
+      "";
+
+
+    box.style.display =
+      "none";
 
   }
 
@@ -5962,11 +9042,8 @@ function editFood(
 
   window.scrollTo(
     {
-      top:
-        0,
-
-      behavior:
-        "smooth"
+      top: 0,
+      behavior: "smooth"
     }
   );
 
@@ -6018,7 +9095,10 @@ async function deleteFood(
       "刪除美食",
 
       "確定要刪除？\n\n🍜 " +
-      record.shop_name +
+      (
+        record.shop_name ||
+        "未命名店家"
+      ) +
       "\n\n關聯的消費紀錄也會一起刪除。"
 
     );
@@ -6114,11 +9194,13 @@ function renderFoodRecords() {
           b
         ) =>
           String(
-            b.recorded_at
+            b.recorded_at ||
+            ""
           )
           .localeCompare(
             String(
-              a.recorded_at
+              a.recorded_at ||
+              ""
             )
           )
       );
@@ -6338,6 +9420,7 @@ function renderFoodRecords() {
 
                 <button
                   class="btn-gray"
+                  type="button"
                   onclick="editFood('${record.client_uid}')"
                 >
                   ✏️ 編輯
@@ -6345,6 +9428,7 @@ function renderFoodRecords() {
 
                 <button
                   class="btn-soft-red"
+                  type="button"
                   onclick="deleteFood('${record.client_uid}')"
                 >
                   🗑️ 刪除
@@ -6366,7 +9450,7 @@ function renderFoodRecords() {
 
 
 /* =========================================================
-   RESET EXPENSE FORM
+   RESET EXPENSE
 ========================================================= */
 
 function resetExpenseForm() {
@@ -6682,7 +9766,8 @@ function editExpense(
     )
     .value =
     String(
-      record.recorded_at
+      record.recorded_at ||
+      ""
     )
     .slice(
       0,
@@ -6696,7 +9781,8 @@ function editExpense(
     )
     .value =
     String(
-      record.recorded_at
+      record.recorded_at ||
+      ""
     )
     .slice(
       11,
@@ -6794,11 +9880,8 @@ function editExpense(
 
   window.scrollTo(
     {
-      top:
-        0,
-
-      behavior:
-        "smooth"
+      top: 0,
+      behavior: "smooth"
     }
   );
 
@@ -6806,7 +9889,7 @@ function editExpense(
 
 
 /* =========================================================
-   CANCEL EXPENSE EDIT
+   CANCEL EXPENSE
 ========================================================= */
 
 document
@@ -6901,11 +9984,13 @@ function renderExpenses() {
           b
         ) =>
           String(
-            b.recorded_at
+            b.recorded_at ||
+            ""
           )
           .localeCompare(
             String(
-              a.recorded_at
+              a.recorded_at ||
+              ""
             )
           )
       );
@@ -7054,6 +10139,7 @@ function renderExpenses() {
 
               <button
                 class="btn-gray"
+                type="button"
                 onclick="editExpense('${record.client_uid}')"
               >
                 ✏️ 編輯
@@ -7061,6 +10147,7 @@ function renderExpenses() {
 
               <button
                 class="btn-soft-red"
+                type="button"
                 onclick="deleteExpense('${record.client_uid}')"
               >
                 🗑️ 刪除
@@ -7080,7 +10167,7 @@ function renderExpenses() {
 
 
 /* =========================================================
-   RESET TRIP FORM
+   RESET TRIP
 ========================================================= */
 
 function resetTripForm() {
@@ -7347,11 +10434,8 @@ function editTrip(
 
   window.scrollTo(
     {
-      top:
-        0,
-
-      behavior:
-        "smooth"
+      top: 0,
+      behavior: "smooth"
     }
   );
 
@@ -7414,27 +10498,20 @@ async function deleteTrip(
   }
 
 
-  /*
-    Local 端先同步做與 Worker 相同的效果。
-  */
-
   const related = [
 
     [
       "footprints",
-      STORE_FOOTPRINTS,
       footprints
     ],
 
     [
       "food_records",
-      STORE_FOOD,
       foodRecords
     ],
 
     [
       "expenses",
-      STORE_EXPENSES,
       expenses
     ]
 
@@ -7444,28 +10521,34 @@ async function deleteTrip(
   for (
     const [
       entity,
-      storeName,
       list
     ] of
     related
   ) {
 
-    for (
-      const record of
+    const records =
       list.filter(
         item =>
           item.trip_client_uid ===
           clientUid
-      )
+      );
+
+
+    for (
+      const record of
+      records
     ) {
-
-      record.trip_client_uid =
-        null;
-
 
       await saveLocalRecord(
         entity,
-        record
+        {
+
+          ...record,
+
+          trip_client_uid:
+            null
+
+        }
       );
 
     }
@@ -7625,6 +10708,7 @@ function renderTrips() {
 
                 <button
                   class="btn-gray"
+                  type="button"
                   onclick="editTrip('${trip.client_uid}')"
                 >
                   ✏️ 編輯
@@ -7632,6 +10716,7 @@ function renderTrips() {
 
                 <button
                   class="btn-soft-red"
+                  type="button"
                   onclick="deleteTrip('${trip.client_uid}')"
                 >
                   🗑️ 刪除
@@ -7653,7 +10738,7 @@ function renderTrips() {
 
 
 /* =========================================================
-   LOCAL COUNT UI
+   LOCAL COUNTS
 ========================================================= */
 
 function updateLocalCountUI() {
@@ -7711,745 +10796,9 @@ function renderAll() {
   updateLocalCountUI();
 
 }
-
 /* =========================================================
-   V2.1.0 CANONICAL UID RECONCILIATION
-
-   舊 V2.0 backup 可能只有 D1 id，
-   沒有 client_uid。
-
-   Sync 時 Worker 會回傳 Server 已存在的
-   canonical client_uid。
-
-   這裡負責把 Local 暫時 UID 換成 Server UID，
-   避免 Local 留下 duplicate。
+   IMPORT COMPARE
 ========================================================= */
-
-async function reconcileCanonicalUid(
-  entity,
-  originalUid,
-  serverRecord
-) {
-
-  const storeName =
-    entityStoreName(
-      entity
-    );
-
-
-  if (
-    !storeName ||
-    !serverRecord ||
-    !serverRecord.client_uid
-  ) {
-
-    return;
-
-  }
-
-
-  const serverUid =
-    serverRecord.client_uid;
-
-
-  /*
-    UID 沒變：
-    正常 merge。
-  */
-
-  if (
-    serverUid ===
-    originalUid
-  ) {
-
-    await mergeServerRecord(
-      entity,
-      serverRecord
-    );
-
-    return;
-
-  }
-
-
-  /*
-    Server 已有正式 UID。
-
-    將 temporary Local UID
-    改成 canonical Server UID。
-  */
-
-  const temporary =
-    await dbGet(
-      storeName,
-      originalUid
-    );
-
-
-  const canonicalExisting =
-    await dbGet(
-      storeName,
-      serverUid
-    );
-
-
-  const converted =
-    await serverRecordToLocal(
-      entity,
-      serverRecord
-    );
-
-
-  await dbPut(
-    storeName,
-    {
-
-      ...temporary,
-
-      ...canonicalExisting,
-
-      ...converted,
-
-      client_uid:
-        serverUid,
-
-      cloud_id:
-        serverRecord.id,
-
-      sync_status:
-        "synced"
-
-    }
-  );
-
-
-  /*
-    移除 temporary Local row。
-  */
-
-  await dbDelete(
-    storeName,
-    originalUid
-  );
-
-
-  /*
-    移除 temporary / canonical queue。
-  */
-
-  await dbDelete(
-    STORE_SYNC_QUEUE,
-    `${entity}:${originalUid}`
-  );
-
-
-  await dbDelete(
-    STORE_SYNC_QUEUE,
-    `${entity}:${serverUid}`
-  );
-
-
-  /*
-    修正其他 Local 資料對 temporary UID 的參照。
-  */
-
-  if (
-    entity ===
-    "trips"
-  ) {
-
-    const relationStores = [
-
-      STORE_FOOTPRINTS,
-      STORE_FOOD,
-      STORE_EXPENSES
-
-    ];
-
-
-    for (
-      const relationStore of
-      relationStores
-    ) {
-
-      const records =
-        await dbGetAll(
-          relationStore
-        );
-
-
-      for (
-        const record of
-        records
-      ) {
-
-        if (
-          record.trip_client_uid ===
-          originalUid
-        ) {
-
-          record.trip_client_uid =
-            serverUid;
-
-
-          await dbPut(
-            relationStore,
-            record
-          );
-
-        }
-
-      }
-
-    }
-
-  }
-
-
-  if (
-    entity ===
-    "footprints"
-  ) {
-
-    const records =
-      await dbGetAll(
-        STORE_FOOTPRINTS
-      );
-
-
-    for (
-      const record of
-      records
-    ) {
-
-      if (
-        record.previous_client_uid ===
-        originalUid
-      ) {
-
-        record.previous_client_uid =
-          serverUid;
-
-
-        await dbPut(
-          STORE_FOOTPRINTS,
-          record
-        );
-
-      }
-
-    }
-
-  }
-
-
-  if (
-    entity ===
-    "food_records"
-  ) {
-
-    const records =
-      await dbGetAll(
-        STORE_EXPENSES
-      );
-
-
-    for (
-      const record of
-      records
-    ) {
-
-      if (
-        record.source_type ===
-        "food" &&
-        record.source_client_uid ===
-        originalUid
-      ) {
-
-        record.source_client_uid =
-          serverUid;
-
-
-        await dbPut(
-          STORE_EXPENSES,
-          record
-        );
-
-      }
-
-    }
-
-  }
-
-}
-
-
-/* =========================================================
-   REVISED SYNC UPSERT
-
-   覆蓋第 2 段的 syncUpsertItem，
-   加入 canonical UID reconciliation。
-========================================================= */
-
-syncUpsertItem =
-async function(
-  queueItem
-) {
-
-  const storeName =
-    entityStoreName(
-      queueItem.entity
-    );
-
-
-  const record =
-    await dbGet(
-      storeName,
-      queueItem.client_uid
-    );
-
-
-  if (
-    !record
-  ) {
-
-    await removeQueueItem(
-      queueItem.entity,
-      queueItem.client_uid
-    );
-
-    return;
-
-  }
-
-
-  record.sync_status =
-    "syncing";
-
-
-  await dbPut(
-    storeName,
-    record
-  );
-
-
-  await updateSyncStatusUI();
-
-
-  const originalUid =
-    record.client_uid;
-
-
-  const result =
-    await api(
-      "/api/sync/upsert",
-      {
-
-        method:
-          "POST",
-
-        body:
-          JSON.stringify(
-            {
-
-              entity:
-                queueItem.entity,
-
-              client_uid:
-                record.client_uid,
-
-              cloud_id:
-                record.cloud_id,
-
-              updated_at:
-                record.updated_at,
-
-              data:
-                prepareSyncData(
-                  queueItem.entity,
-                  record
-                )
-
-            }
-          )
-
-      }
-    );
-
-
-  if (
-    result.record
-  ) {
-
-    await reconcileCanonicalUid(
-
-      queueItem.entity,
-
-      originalUid,
-
-      result.record
-
-    );
-
-
-    return;
-
-  }
-
-
-  record.cloud_id =
-    result.cloud_id ??
-    record.cloud_id;
-
-
-  /*
-    若 Worker 回傳 canonical UID。
-  */
-
-  if (
-    result.client_uid &&
-    result.client_uid !==
-    originalUid
-  ) {
-
-    await reconcileCanonicalUid(
-      queueItem.entity,
-      originalUid,
-      {
-
-        ...record,
-
-        id:
-          result.cloud_id,
-
-        client_uid:
-          result.client_uid
-
-      }
-    );
-
-
-    return;
-
-  }
-
-
-  record.sync_status =
-    "synced";
-
-
-  await dbPut(
-    storeName,
-    record
-  );
-
-
-  await removeQueueItem(
-    queueItem.entity,
-    originalUid
-  );
-
-};
-
-
-/* =========================================================
-   RECOVER INTERRUPTED SYNC
-
-   如果瀏覽器在 syncing 狀態被關掉，
-   下次開啟改回 pending。
-========================================================= */
-
-async function recoverInterruptedSync() {
-
-  const entities = [
-
-    [
-      "trips",
-      STORE_TRIPS
-    ],
-
-    [
-      "footprints",
-      STORE_FOOTPRINTS
-    ],
-
-    [
-      "food_records",
-      STORE_FOOD
-    ],
-
-    [
-      "expenses",
-      STORE_EXPENSES
-    ]
-
-  ];
-
-
-  for (
-    const [
-      entity,
-      storeName
-    ] of
-    entities
-  ) {
-
-    const records =
-      await dbGetAll(
-        storeName
-      );
-
-
-    for (
-      const record of
-      records
-    ) {
-
-      if (
-        record.sync_status !==
-        "syncing"
-      ) {
-
-        continue;
-
-      }
-
-
-      record.sync_status =
-        "pending";
-
-
-      await dbPut(
-        storeName,
-        record
-      );
-
-
-      await queueSync(
-
-        entity,
-
-        record.client_uid,
-
-        record.deleted_at
-          ? "delete"
-          : "upsert"
-
-      );
-
-    }
-
-  }
-
-}
-
-
-/* =========================================================
-   EXPORT LOCAL BACKUP
-========================================================= */
-
-document
-  .getElementById(
-    "exportButton"
-  )
-  .addEventListener(
-    "click",
-    exportLocalBackup
-  );
-
-
-async function exportLocalBackup() {
-
-  try {
-
-    /*
-      包含 tombstone，
-      才是真正完整的 Local backup。
-    */
-
-    const [
-      allTrips,
-      allFootprints,
-      allFoods,
-      allExpenses
-    ] =
-    await Promise.all([
-
-      dbGetAll(
-        STORE_TRIPS
-      ),
-
-      dbGetAll(
-        STORE_FOOTPRINTS
-      ),
-
-      dbGetAll(
-        STORE_FOOD
-      ),
-
-      dbGetAll(
-        STORE_EXPENSES
-      )
-
-    ]);
-
-
-    const lastServerTime =
-      await getMeta(
-        "last_sync_server_time",
-        null
-      );
-
-
-    const backup = {
-
-      app:
-        "Travel Toolkit",
-
-      version:
-        APP_VERSION,
-
-      backup_version:
-        3,
-
-      architecture:
-        "local-first",
-
-      exported_at:
-        nowISO(),
-
-      sync_metadata: {
-
-        last_sync_server_time:
-          lastServerTime
-
-      },
-
-      trips:
-        allTrips,
-
-      footprints:
-        allFootprints,
-
-      food_records:
-        allFoods,
-
-      expenses:
-        allExpenses
-
-    };
-
-
-    const blob =
-      new Blob(
-        [
-          JSON.stringify(
-            backup,
-            null,
-            2
-          )
-        ],
-        {
-          type:
-            "application/json"
-        }
-      );
-
-
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-
-    const link =
-      document.createElement(
-        "a"
-      );
-
-
-    link.href =
-      url;
-
-
-    link.download =
-
-      "travel-toolkit-v" +
-      APP_VERSION +
-      "-" +
-      new Date()
-        .toISOString()
-        .slice(
-          0,
-          10
-        ) +
-      ".json";
-
-
-    document.body.appendChild(
-      link
-    );
-
-
-    link.click();
-
-
-    link.remove();
-
-
-    setTimeout(
-      () => {
-
-        URL.revokeObjectURL(
-          url
-        );
-
-      },
-      1000
-    );
-
-
-    showToast(
-      "💾 Local 完整備份已匯出"
-    );
-
-  }
-  catch (
-    error
-  ) {
-
-    showMessage(
-      "匯出失敗：" +
-      error.message,
-      "error"
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   IMPORT HELPERS
-========================================================= */
-
-function normalizeImportTime(
-  value
-) {
-
-  if (
-    !value
-  ) {
-
-    return null;
-
-  }
-
-
-  return value;
-
-}
-
 
 function importedRecordIsNewer(
   incoming,
@@ -8465,13 +10814,6 @@ function importedRecordIsNewer(
   }
 
 
-  /*
-    舊備份沒有 updated_at：
-
-    如果 Local 已有資料，
-    保留 Local，避免舊 backup 蓋掉較新資料。
-  */
-
   if (
     !incoming.updated_at
   ) {
@@ -8482,13 +10824,13 @@ function importedRecordIsNewer(
 
 
   const incomingTime =
-    parseLocalSyncTime(
+    parseSyncTime(
       incoming.updated_at
     );
 
 
   const existingTime =
-    parseLocalSyncTime(
+    parseSyncTime(
       existing.updated_at
     );
 
@@ -8522,49 +10864,7 @@ function importedRecordIsNewer(
 
 
 /* =========================================================
-   FIND LOCAL BY CLOUD ID
-========================================================= */
-
-async function findLocalRecordByCloudId(
-  storeName,
-  cloudId
-) {
-
-  if (
-    cloudId === null ||
-    cloudId === undefined ||
-    cloudId === ""
-  ) {
-
-    return null;
-
-  }
-
-
-  const records =
-    await dbGetAll(
-      storeName
-    );
-
-
-  return (
-    records.find(
-      record =>
-        Number(
-          record.cloud_id
-        ) ===
-        Number(
-          cloudId
-        )
-    ) ||
-    null
-  );
-
-}
-
-
-/* =========================================================
-   IMPORT ONE ENTITY
+   IMPORT ONE RECORD
 ========================================================= */
 
 async function importEntityRecord(
@@ -8588,11 +10888,6 @@ async function importEntityRecord(
   }
 
 
-  /*
-    V2.1 backup：
-    client_uid 是主要識別。
-  */
-
   let clientUid =
     incoming.client_uid ||
     null;
@@ -8608,11 +10903,8 @@ async function importEntityRecord(
 
 
   /*
-    V2.0 Travel Toolkit backup：
-    id 是 D1 cloud id。
-
-    如果 Local 已經從 D1 同步過，
-    用 cloud_id 找回 canonical UID。
+    舊 Travel Toolkit backup：
+    id 視為 D1 cloud id。
   */
 
   if (
@@ -8622,7 +10914,7 @@ async function importEntityRecord(
   ) {
 
     existing =
-      await findLocalRecordByCloudId(
+      await findLocalByCloudId(
         storeName,
         incoming.id
       );
@@ -8640,11 +10932,6 @@ async function importEntityRecord(
   }
 
 
-  /*
-    完全沒有 UID：
-    建立 Local UID。
-  */
-
   if (
     !clientUid
   ) {
@@ -8654,11 +10941,6 @@ async function importEntityRecord(
 
   }
 
-
-  /*
-    Existing 比 backup 新，
-    不覆寫。
-  */
 
   if (
     existing &&
@@ -8707,10 +10989,6 @@ async function importEntityRecord(
   };
 
 
-  /*
-    D1 id 不當 Local primary key。
-  */
-
   delete record.id;
 
 
@@ -8739,7 +11017,183 @@ async function importEntityRecord(
 
 
 /* =========================================================
-   IMPORT BACKUP
+   EXPORT JSON
+========================================================= */
+
+document
+  .getElementById(
+    "exportButton"
+  )
+  .addEventListener(
+    "click",
+    exportLocalBackup
+  );
+
+
+async function exportLocalBackup() {
+
+  try {
+
+    const [
+      allTrips,
+      allFootprints,
+      allFoods,
+      allExpenses
+    ] =
+    await Promise.all([
+
+      dbGetAll(
+        STORE_TRIPS
+      ),
+
+      dbGetAll(
+        STORE_FOOTPRINTS
+      ),
+
+      dbGetAll(
+        STORE_FOOD
+      ),
+
+      dbGetAll(
+        STORE_EXPENSES
+      )
+
+    ]);
+
+
+    const backup = {
+
+      app:
+        "Travel Toolkit",
+
+      version:
+        APP_VERSION,
+
+      backup_version:
+        3,
+
+      architecture:
+        "local-first",
+
+      exported_at:
+        nowISO(),
+
+      sync_metadata: {
+
+        last_sync_server_time:
+          await getMeta(
+            "last_sync_server_time",
+            null
+          )
+
+      },
+
+      trips:
+        allTrips,
+
+      footprints:
+        allFootprints,
+
+      food_records:
+        allFoods,
+
+      expenses:
+        allExpenses
+
+    };
+
+
+    const blob =
+      new Blob(
+        [
+          JSON.stringify(
+            backup,
+            null,
+            2
+          )
+        ],
+        {
+          type:
+            "application/json"
+        }
+      );
+
+
+    const objectUrl =
+      URL.createObjectURL(
+        blob
+      );
+
+
+    const link =
+      document.createElement(
+        "a"
+      );
+
+
+    link.href =
+      objectUrl;
+
+
+    link.download =
+
+      "travel-toolkit-v" +
+      APP_VERSION +
+      "-" +
+      new Date()
+        .toISOString()
+        .slice(
+          0,
+          10
+        ) +
+      ".json";
+
+
+    document.body.appendChild(
+      link
+    );
+
+
+    link.click();
+
+
+    link.remove();
+
+
+    setTimeout(
+      () => {
+
+        URL.revokeObjectURL(
+          objectUrl
+        );
+
+      },
+      1000
+    );
+
+
+    showToast(
+      "💾 Local 完整備份已匯出"
+    );
+
+  }
+  catch (
+    error
+  ) {
+
+    showMessage(
+      "匯出失敗：" +
+      error.message,
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   IMPORT JSON
 ========================================================= */
 
 document
@@ -8761,7 +11215,8 @@ async function importLocalBackup() {
 
 
   const file =
-    input.files?.[0];
+    input.files &&
+    input.files[0];
 
 
   if (
@@ -8847,7 +11302,7 @@ async function importLocalBackup() {
     ) {
 
       throw new Error(
-        "找不到可匯入的 Travel Toolkit 資料"
+        "JSON 中找不到可匯入資料"
       );
 
     }
@@ -8856,7 +11311,7 @@ async function importLocalBackup() {
     const confirmed =
       await confirmDialog(
 
-        "匯入備份",
+        "匯入 JSON",
 
         "找到：\n\n" +
 
@@ -8876,10 +11331,8 @@ async function importLocalBackup() {
         importExpenses.length +
         "\n\n" +
 
-        "資料會先合併到本機 IndexedDB。" +
-        "\n不會先直接寫入 D1。" +
-
-        "\n\n匯入完成後，會由同步引擎自動與 D1 合併。"
+        "會先合併到 Local IndexedDB，" +
+        "再由同步引擎與 D1 合併。"
 
       );
 
@@ -8893,14 +11346,6 @@ async function importLocalBackup() {
     }
 
 
-    /*
-      V2.0 Travel Toolkit backup
-      可以把 integer id 視為 D1 cloud id。
-
-      其他來源的 standalone backup
-      不做這個假設。
-    */
-
     const cloudAware =
 
       data.app ===
@@ -8913,25 +11358,13 @@ async function importLocalBackup() {
       2;
 
 
-    /*
-      舊 trip id → Local client_uid
-    */
-
     const tripMap =
       new Map();
 
 
-    /*
-      舊 footprint id → Local client_uid
-    */
-
     const footprintMap =
       new Map();
 
-
-    /*
-      舊 food id → Local client_uid
-    */
 
     const foodMap =
       new Map();
@@ -8979,9 +11412,8 @@ async function importLocalBackup() {
           null,
 
         updated_at:
-          normalizeImportTime(
-            source.updated_at
-          ),
+          source.updated_at ??
+          null,
 
         deleted_at:
           source.deleted_at ??
@@ -9018,7 +11450,7 @@ async function importLocalBackup() {
 
 
     /* =====================================================
-       IMPORT FOOTPRINTS - FIRST PASS
+       IMPORT FOOTPRINTS FIRST PASS
     ===================================================== */
 
     for (
@@ -9135,8 +11567,7 @@ async function importLocalBackup() {
 
 
     /*
-      Footprint 第二輪：
-      修 previous_record_id。
+      Footprint 第二輪修 previous relation。
     */
 
     for (
@@ -9249,11 +11680,6 @@ async function importLocalBackup() {
       }
 
 
-      /*
-        相容舊 standalone food backup：
-        date + time → recorded_at
-      */
-
       let recordedAt =
         source.recorded_at ||
         source.timestamp ||
@@ -9326,7 +11752,6 @@ async function importLocalBackup() {
 
         photo_url:
           source.photo_url ??
-          source.photo ??
           null,
 
         timezone:
@@ -9480,15 +11905,10 @@ async function importLocalBackup() {
 
 
     showMessage(
-      "✅ JSON 已合併到本機，正在準備同步 D1",
+      "✅ JSON 已合併至 Local",
       "success"
     );
 
-
-    /*
-      有網路立即同步。
-      無網路就留 pending。
-    */
 
     if (
       navigator.onLine
@@ -9533,7 +11953,7 @@ async function importLocalBackup() {
 
 
 /* =========================================================
-   INITIAL FORM VALUES
+   FORM INIT
 ========================================================= */
 
 function initializeForms() {
@@ -9577,7 +11997,7 @@ function initializeForms() {
 
 
 /* =========================================================
-   INITIAL LOCAL RENDER
+   LOAD LOCAL FIRST
 ========================================================= */
 
 async function loadLocalFirst() {
@@ -9599,67 +12019,76 @@ async function loadLocalFirst() {
 
 async function init() {
 
-  initializeForms();
-
-
-  updateNetworkUI();
-
-
-  updateCloudHeader(
-    "pending",
-    "準備連線..."
-  );
-
-
-  updateSyncHeader(
-    "pending",
-    "讀取本機資料..."
-  );
-
-
   try {
 
     /*
-      1.
-      IndexedDB 必須先成功。
+      第一件事就更新網路狀態。
+      若畫面仍停在「啟動中...」，
+      表示 init 根本沒跑到。
+    */
+
+    updateNetworkUI();
+
+
+    updateCloudHeader(
+      "pending",
+      "D1 準備檢查"
+    );
+
+
+    updateSyncHeader(
+      "pending",
+      "Local 初始化中"
+    );
+
+
+    initializeForms();
+
+
+    /*
+      Leaflet 放在 try 裡，
+      地圖失敗也會顯示 startup error。
+    */
+
+    initializeMap();
+
+
+    /*
+      IndexedDB。
     */
 
     await openLocalDB();
 
 
+    updateSyncHeader(
+      "pending",
+      "Local 已開啟"
+    );
+
+
     /*
-      2.
-      如果上次瀏覽器在 syncing 中關掉，
-      恢復為 pending。
+      上次被中斷的 syncing
+      回復 pending。
     */
 
     await recoverInterruptedSync();
 
 
     /*
-      3.
       Local-first：
-      先顯示 IndexedDB。
-      不等 D1。
+      先顯示 Local。
     */
 
     await loadLocalFirst();
 
 
     /*
-      4.
-      再檢查 Cloud。
+      D1 測試。
     */
 
     const cloudOK =
       await testCloudConnection();
 
-
-    /*
-      5.
-      有網路 + Worker 正常
-      才啟動自動同步。
-    */
 
     if (
       navigator.onLine &&
@@ -9676,14 +12105,16 @@ async function init() {
     }
 
 
-    /*
-      Leaflet 初次尺寸修正。
-    */
-
     setTimeout(
       () => {
 
-        footprintMap.invalidateSize();
+        if (
+          footprintMap
+        ) {
+
+          footprintMap.invalidateSize();
+
+        }
 
       },
       300
@@ -9695,15 +12126,21 @@ async function init() {
   ) {
 
     console.error(
-      "INIT ERROR:",
+      "INIT ERROR",
       error
     );
 
 
-    showMessage(
-      "Travel Toolkit 初始化失敗：" +
-      error.message,
-      "error"
+    showStartupError(
+
+      error?.stack ||
+
+      error?.message ||
+
+      String(
+        error
+      )
+
     );
 
 
@@ -9718,10 +12155,7 @@ async function init() {
 
 
 /* =========================================================
-   PAGE VISIBILITY
-
-   從背景切回網頁時，
-   有網路就重新同步一次。
+   VISIBILITY SYNC
 ========================================================= */
 
 document
@@ -9739,7 +12173,13 @@ document
       }
 
 
-      footprintMap.invalidateSize();
+      if (
+        footprintMap
+      ) {
+
+        footprintMap.invalidateSize();
+
+      }
 
 
       if (
@@ -9762,7 +12202,7 @@ document
 
 
 /* =========================================================
-   CONFIRM MODAL OUTSIDE CLICK
+   CONFIRM MODAL BACKDROP
 ========================================================= */
 
 document
@@ -9805,6 +12245,4 @@ init();
 
 </body>
 
-</html>  
-
-  
+</html>
