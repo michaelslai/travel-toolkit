@@ -1,14 +1,18 @@
 /* =========================================================
-   Travel Toolkit V2.2.0 Modular
+   Travel Toolkit V2.2.2 Modular
    File: css/app.css
    Modified: 2026-09-12
 
-   Changes:
-   - 從 V2.1.2 index.html 抽離 CSS
-   - 支援 Modular UI
-   - 支援 Footprint / Food / Expense / Trip / Sync
-   - 支援 Leaflet Map
-   - 支援 Nearby / Date Group / Sync Badge
+   V2.2.2 Changes:
+   - Footprint Map ↔ Record 雙向定位
+   - 新增編號 Marker
+   - 新增 Record Highlight
+   - 新增旅程摘要
+   - 新增旅行統計
+   - 新增每日摘要
+   - 新增前一站 / 下一站資訊 Badge
+   - 新增最新一筆 / 回地圖快捷按鈕
+   - 保留 Modular UI / Local-first / D1 Sync
 ========================================================= */
 
 
@@ -28,6 +32,11 @@ body {
 }
 
 
+html {
+  scroll-behavior: smooth;
+}
+
+
 body {
   font-family:
     -apple-system,
@@ -37,7 +46,9 @@ body {
     sans-serif;
 
   background: #f5f6f8;
+
   color: #222;
+
   line-height: 1.5;
 }
 
@@ -52,6 +63,12 @@ textarea {
 
 button {
   cursor: pointer;
+
+  -webkit-tap-highlight-color:
+    transparent;
+
+  touch-action:
+    manipulation;
 }
 
 
@@ -72,9 +89,16 @@ a {
 
 .app {
   width: 100%;
+
   max-width: 900px;
+
   margin: 0 auto;
-  padding-bottom: 80px;
+
+  padding-bottom:
+    calc(
+      80px +
+      env(safe-area-inset-bottom)
+    );
 }
 
 
@@ -89,25 +113,46 @@ a {
 
 .app-header {
   position: sticky;
+
   top: 0;
+
   z-index: 1000;
 
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(10px);
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.96
+    );
 
-  border-bottom: 1px solid #e5e5e5;
+  backdrop-filter:
+    blur(10px);
+
+  border-bottom:
+    1px solid #e5e5e5;
 }
 
 
 .header-top {
-  padding: 14px 16px 8px;
+  padding:
+    calc(
+      14px +
+      env(safe-area-inset-top)
+    )
+    16px
+    8px;
 }
 
 
 .header-title-row {
   display: flex;
-  justify-content: space-between;
+
+  justify-content:
+    space-between;
+
   align-items: center;
+
   gap: 10px;
 }
 
@@ -116,6 +161,7 @@ a {
   margin: 0;
 
   font-size: 23px;
+
   font-weight: 800;
 }
 
@@ -125,19 +171,26 @@ a {
 
   padding: 4px 9px;
 
-  border-radius: 999px;
+  border-radius:
+    999px;
 
-  background: #eef3ff;
-  color: #3659a5;
+  background:
+    #eef3ff;
+
+  color:
+    #3659a5;
 
   font-size: 12px;
+
   font-weight: 700;
 }
 
 
 .header-status {
   display: flex;
+
   flex-wrap: wrap;
+
   gap: 6px;
 
   margin-top: 9px;
@@ -150,47 +203,67 @@ a {
 
 .status-pill {
   display: inline-flex;
+
   align-items: center;
 
   min-height: 28px;
+
   padding: 4px 9px;
 
-  border-radius: 999px;
+  border-radius:
+    999px;
 
   font-size: 12px;
+
   font-weight: 700;
 
-  white-space: nowrap;
+  white-space:
+    nowrap;
 }
 
 
 .status-pill.success {
-  background: #e8f7ed;
-  color: #26733e;
+  background:
+    #e8f7ed;
+
+  color:
+    #26733e;
 }
 
 
 .status-pill.warning {
-  background: #fff4d7;
-  color: #8a6400;
+  background:
+    #fff4d7;
+
+  color:
+    #8a6400;
 }
 
 
 .status-pill.danger {
-  background: #ffe7e7;
-  color: #a62828;
+  background:
+    #ffe7e7;
+
+  color:
+    #a62828;
 }
 
 
 .status-pill.info {
-  background: #e8f1ff;
-  color: #245f9e;
+  background:
+    #e8f1ff;
+
+  color:
+    #245f9e;
 }
 
 
 .status-pill.muted {
-  background: #eeeeee;
-  color: #666666;
+  background:
+    #eeeeee;
+
+  color:
+    #666666;
 }
 
 
@@ -200,31 +273,52 @@ a {
 
 .tab-nav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
 
-  border-top: 1px solid #eeeeee;
-  background: white;
+  grid-template-columns:
+    repeat(
+      5,
+      1fr
+    );
+
+  border-top:
+    1px solid #eeeeee;
+
+  background:
+    white;
 }
 
 
 .tab-button {
   border: 0;
-  border-bottom: 3px solid transparent;
 
-  padding: 10px 4px;
+  border-bottom:
+    3px solid
+    transparent;
 
-  background: transparent;
+  padding:
+    10px 4px;
 
-  color: #666;
+  background:
+    transparent;
+
+  color:
+    #666;
+
   font-size: 12px;
+
   font-weight: 700;
 }
 
 
 .tab-button.active {
-  color: #1f6feb;
-  border-bottom-color: #1f6feb;
-  background: #f4f8ff;
+  color:
+    #1f6feb;
+
+  border-bottom-color:
+    #1f6feb;
+
+  background:
+    #f4f8ff;
 }
 
 
@@ -248,32 +342,47 @@ a {
 
 .card {
   margin-bottom: 14px;
+
   padding: 15px;
 
-  border: 1px solid #e7e7e7;
+  border:
+    1px solid #e7e7e7;
+
   border-radius: 16px;
 
-  background: white;
+  background:
+    white;
 
   box-shadow:
     0 3px 14px
-    rgba(0, 0, 0, 0.04);
+    rgba(
+      0,
+      0,
+      0,
+      0.04
+    );
 }
 
 
 .card-title {
-  margin: 0 0 12px;
+  margin:
+    0 0 12px;
 
   font-size: 17px;
+
   font-weight: 800;
 }
 
 
 .card-subtitle {
   margin-top: -5px;
-  margin-bottom: 12px;
 
-  color: #777;
+  margin-bottom:
+    12px;
+
+  color:
+    #777;
+
   font-size: 12px;
 }
 
@@ -283,7 +392,8 @@ a {
 ========================================================= */
 
 .form-group {
-  margin-bottom: 13px;
+  margin-bottom:
+    13px;
 }
 
 
@@ -297,8 +407,11 @@ label {
 
   margin-bottom: 5px;
 
-  color: #444;
+  color:
+    #444;
+
   font-size: 13px;
+
   font-weight: 700;
 }
 
@@ -308,52 +421,79 @@ select,
 textarea {
   width: 100%;
 
-  border: 1px solid #d8d8d8;
+  border:
+    1px solid #d8d8d8;
+
   border-radius: 11px;
 
-  padding: 10px 11px;
+  padding:
+    10px 11px;
 
-  background: white;
-  color: #222;
+  background:
+    white;
 
-  outline: none;
+  color:
+    #222;
+
+  outline:
+    none;
 }
 
 
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #6ba3e9;
+  border-color:
+    #6ba3e9;
 
   box-shadow:
     0 0 0 3px
-    rgba(67, 133, 220, 0.12);
+    rgba(
+      67,
+      133,
+      220,
+      0.12
+    );
 }
 
 
 textarea {
-  min-height: 85px;
-  resize: vertical;
+  min-height:
+    85px;
+
+  resize:
+    vertical;
 }
 
 
 .grid-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+
+  grid-template-columns:
+    1fr 1fr;
+
   gap: 10px;
 }
 
 
 .grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+
+  grid-template-columns:
+    repeat(
+      3,
+      1fr
+    );
+
   gap: 10px;
 }
 
 
 .inline-row {
   display: flex;
+
   align-items: center;
+
   gap: 10px;
 }
 
@@ -364,7 +504,8 @@ textarea {
 
 
 .hidden {
-  display: none !important;
+  display:
+    none !important;
 }
 
 
@@ -374,7 +515,9 @@ textarea {
 
 .checkbox-row {
   display: flex;
+
   align-items: center;
+
   gap: 9px;
 
   margin-top: 8px;
@@ -383,12 +526,15 @@ textarea {
 
 .checkbox-row input[type="checkbox"] {
   width: auto;
-  transform: scale(1.15);
+
+  transform:
+    scale(1.15);
 }
 
 
 .checkbox-row label {
   margin: 0;
+
   font-weight: 500;
 }
 
@@ -401,58 +547,83 @@ textarea {
   width: 100%;
 
   border: 0;
-  border-radius: 11px;
 
-  padding: 11px 14px;
+  border-radius:
+    11px;
+
+  padding:
+    11px 14px;
 
   font-weight: 800;
 }
 
 
 .btn-primary {
-  background: #2563eb;
-  color: white;
+  background:
+    #2563eb;
+
+  color:
+    white;
 }
 
 
 .btn-green {
-  background: #2f855a;
-  color: white;
+  background:
+    #2f855a;
+
+  color:
+    white;
 }
 
 
 .btn-orange {
-  background: #d97706;
-  color: white;
+  background:
+    #d97706;
+
+  color:
+    white;
 }
 
 
 .btn-gray {
-  border: 1px solid #d5d5d5;
+  border:
+    1px solid #d5d5d5;
 
-  background: #f5f5f5;
-  color: #333;
+  background:
+    #f5f5f5;
 
-  border-radius: 9px;
+  color:
+    #333;
 
-  padding: 8px 12px;
+  border-radius:
+    9px;
+
+  padding:
+    8px 12px;
 }
 
 
 .btn-soft-red {
-  border: 1px solid #f1c3c3;
+  border:
+    1px solid #f1c3c3;
 
-  background: #fff1f1;
-  color: #a72b2b;
+  background:
+    #fff1f1;
 
-  border-radius: 9px;
+  color:
+    #a72b2b;
 
-  padding: 8px 12px;
+  border-radius:
+    9px;
+
+  padding:
+    8px 12px;
 }
 
 
 .button-row {
   display: flex;
+
   gap: 9px;
 }
 
@@ -468,11 +639,14 @@ textarea {
 
 #footprintMap {
   width: 100%;
+
   height: 320px;
 
   margin-bottom: 14px;
 
-  border: 1px solid #dedede;
+  border:
+    1px solid #dedede;
+
   border-radius: 16px;
 
   overflow: hidden;
@@ -480,7 +654,230 @@ textarea {
 
 
 .leaflet-container {
-  font-family: inherit;
+  font-family:
+    inherit;
+}
+
+
+/* =========================================================
+   V2.2.2 NUMBERED MARKER
+========================================================= */
+
+.route-number-icon {
+  border: none;
+
+  background:
+    transparent;
+}
+
+
+.route-number-marker {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  width: 30px;
+
+  height: 30px;
+
+  border:
+    3px solid #ffffff;
+
+  border-radius:
+    50%;
+
+  background:
+    #1f6feb;
+
+  color:
+    white;
+
+  box-shadow:
+    0 2px 8px
+    rgba(
+      0,
+      0,
+      0,
+      0.32
+    );
+
+  font-size: 13px;
+
+  font-weight: 800;
+
+  line-height: 1;
+}
+
+
+/* =========================================================
+   V2.2.2 TRIP SUMMARY
+========================================================= */
+
+.trip-summary-box {
+  padding: 14px;
+
+  border-radius:
+    14px;
+
+  background:
+    #f7f9fc;
+}
+
+
+.trip-summary-title {
+  margin-bottom:
+    10px;
+
+  font-size: 16px;
+
+  font-weight: 800;
+}
+
+
+.trip-summary-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      3,
+      1fr
+    );
+
+  gap: 8px;
+
+  margin-bottom:
+    12px;
+}
+
+
+.trip-summary-stat {
+  padding:
+    10px 6px;
+
+  border:
+    1px solid #e7e9ed;
+
+  border-radius:
+    10px;
+
+  background:
+    #ffffff;
+
+  text-align:
+    center;
+}
+
+
+.trip-summary-value {
+  font-size: 17px;
+
+  font-weight: 800;
+}
+
+
+.trip-summary-label {
+  margin-top: 3px;
+
+  color:
+    #777;
+
+  font-size: 11px;
+}
+
+
+.trip-summary-period {
+  color:
+    #666;
+
+  font-size: 13px;
+
+  line-height: 1.8;
+}
+
+
+.trip-summary-types {
+  display: flex;
+
+  flex-wrap: wrap;
+
+  gap: 6px;
+
+  margin-top:
+    10px;
+}
+
+
+.trip-summary-chip {
+  display:
+    inline-block;
+
+  padding:
+    4px 8px;
+
+  border:
+    1px solid #e0e3e8;
+
+  border-radius:
+    999px;
+
+  background:
+    #ffffff;
+
+  color:
+    #555;
+
+  font-size: 12px;
+}
+
+
+/* =========================================================
+   V2.2.2 FOOTPRINT STATS
+========================================================= */
+
+.footprint-stats-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      3,
+      1fr
+    );
+
+  gap: 8px;
+}
+
+
+.footprint-stat-box {
+  padding:
+    12px 6px;
+
+  border-radius:
+    12px;
+
+  background:
+    #f6f7f9;
+
+  text-align:
+    center;
+}
+
+
+.footprint-stat-value {
+  font-size: 18px;
+
+  font-weight: 800;
+}
+
+
+.footprint-stat-label {
+  margin-top: 3px;
+
+  color:
+    #777;
+
+  font-size: 12px;
 }
 
 
@@ -493,12 +890,17 @@ textarea {
 
   padding: 10px;
 
-  border-radius: 10px;
+  border-radius:
+    10px;
 
-  background: #f4f7fb;
+  background:
+    #f4f7fb;
 
-  color: #555;
+  color:
+    #555;
+
   font-size: 12px;
+
   line-height: 1.6;
 }
 
@@ -509,48 +911,81 @@ textarea {
 
 .type-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+
+  grid-template-columns:
+    repeat(
+      4,
+      1fr
+    );
+
   gap: 8px;
 }
 
 
 .type-button {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
 
-  min-height: 72px;
+  flex-direction:
+    column;
 
-  border: 1px solid #dddddd;
-  border-radius: 12px;
+  align-items:
+    center;
 
-  background: white;
+  justify-content:
+    center;
 
-  color: #555;
-  font-size: 12px;
-  font-weight: 700;
+  min-height:
+    72px;
+
+  border:
+    1px solid #dddddd;
+
+  border-radius:
+    12px;
+
+  background:
+    white;
+
+  color:
+    #555;
+
+  font-size:
+    12px;
+
+  font-weight:
+    700;
 }
 
 
 .type-button.active {
-  border-color: #3979d2;
+  border-color:
+    #3979d2;
 
-  background: #edf5ff;
-  color: #245eaa;
+  background:
+    #edf5ff;
+
+  color:
+    #245eaa;
 
   box-shadow:
     0 0 0 2px
-    rgba(57, 121, 210, 0.1);
+    rgba(
+      57,
+      121,
+      210,
+      0.1
+    );
 }
 
 
 .type-icon {
   display: block;
 
-  margin-bottom: 4px;
+  margin-bottom:
+    4px;
 
-  font-size: 24px;
+  font-size:
+    24px;
 }
 
 
@@ -559,65 +994,89 @@ textarea {
 ========================================================= */
 
 .nearby-wrap {
-  margin-top: 12px;
+  margin-top:
+    12px;
 }
 
 
 .nearby-list {
   display: grid;
+
   gap: 7px;
 
-  margin-top: 7px;
+  margin-top:
+    7px;
 }
 
 
 .nearby-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
+
   gap: 10px;
 
   width: 100%;
 
-  border: 1px solid #dfe4ea;
-  border-radius: 11px;
+  border:
+    1px solid #dfe4ea;
 
-  padding: 10px 11px;
+  border-radius:
+    11px;
 
-  background: white;
+  padding:
+    10px 11px;
 
-  text-align: left;
+  background:
+    white;
+
+  text-align:
+    left;
 }
 
 
 .nearby-item:active {
-  background: #f1f6fb;
+  background:
+    #f1f6fb;
 }
 
 
 .nearby-name {
   flex: 1;
 
-  font-weight: 700;
+  font-weight:
+    700;
 }
 
 
 .nearby-meta {
-  flex: 0 0 auto;
+  flex:
+    0 0 auto;
 
-  color: #777;
-  font-size: 11px;
+  color:
+    #777;
+
+  font-size:
+    11px;
 }
 
 
 .status-text {
   padding: 10px;
 
-  color: #777;
-  font-size: 12px;
-  text-align: center;
-}
+  color:
+    #777;
 
+  font-size:
+    12px;
+
+  text-align:
+    center;
+}
 
 /* =========================================================
    FILTERS
@@ -625,15 +1084,89 @@ textarea {
 
 .filter-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+
+  grid-template-columns:
+    1fr 1fr;
+
   gap: 8px;
 
-  margin-bottom: 10px;
+  margin-bottom:
+    10px;
 }
 
 
 .search-input {
-  margin-bottom: 10px;
+  margin-bottom:
+    10px;
+}
+
+
+.search-result-info {
+  min-height:
+    18px;
+
+  margin-top:
+    6px;
+
+  color:
+    #777;
+
+  font-size:
+    12px;
+}
+
+
+/* =========================================================
+   V2.2.2 TIMELINE ACTIONS
+========================================================= */
+
+.footprint-timeline-actions {
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 8px;
+
+  margin-bottom:
+    14px;
+}
+
+
+.footprint-timeline-actions button {
+  margin: 0;
+
+  border: 0;
+
+  border-radius:
+    11px;
+
+  padding:
+    11px 10px;
+
+  font-size:
+    13px;
+
+  font-weight:
+    800;
+}
+
+
+.footprint-latest-button {
+  background:
+    #edf8f1;
+
+  color:
+    #13713d;
+}
+
+
+.footprint-map-button {
+  background:
+    #eef4ff;
+
+  color:
+    #175bb6;
 }
 
 
@@ -642,55 +1175,140 @@ textarea {
 ========================================================= */
 
 .record {
-  margin-bottom: 10px;
-  padding: 13px;
+  margin-bottom:
+    10px;
 
-  border: 1px solid #e6e6e6;
-  border-radius: 13px;
+  padding:
+    13px;
 
-  background: white;
+  border:
+    1px solid #e6e6e6;
+
+  border-radius:
+    13px;
+
+  background:
+    white;
+
+  transition:
+    background 0.25s,
+    box-shadow 0.25s,
+    border-color 0.25s;
+}
+
+
+.record.record-highlight {
+  border-color:
+    #e1b14c;
+
+  background:
+    #fff7d9;
+
+  box-shadow:
+    0 0 0 2px
+    rgba(
+      229,
+      138,
+      0,
+      0.18
+    );
+}
+
+
+.record-main {
+  cursor:
+    pointer;
 }
 
 
 .record-title {
   display: flex;
+
   flex-wrap: wrap;
+
   align-items: center;
+
   gap: 6px;
 
   font-size: 17px;
+
   font-weight: 800;
+}
+
+
+.record-number {
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  flex: 0 0 auto;
+
+  width: 26px;
+
+  height: 26px;
+
+  margin-right:
+    3px;
+
+  border-radius:
+    50%;
+
+  background:
+    #1f6feb;
+
+  color:
+    white;
+
+  font-size:
+    12px;
+
+  font-weight:
+    800;
 }
 
 
 .record-meta {
   margin-top: 7px;
 
-  color: #666;
-  font-size: 12px;
-  line-height: 1.7;
+  color:
+    #666;
+
+  font-size:
+    12px;
+
+  line-height:
+    1.7;
 }
 
 
 .record-note {
   margin-top: 9px;
+
   padding: 10px;
 
-  border-radius: 10px;
+  border-radius:
+    10px;
 
-  background: #faf8f2;
+  background:
+    #faf8f2;
 
-  font-size: 13px;
+  font-size:
+    13px;
 
-  white-space: pre-wrap;
+  white-space:
+    pre-wrap;
 }
 
 
 .record-actions {
   display: flex;
+
   gap: 8px;
 
-  margin-top: 12px;
+  margin-top:
+    12px;
 }
 
 
@@ -700,45 +1318,160 @@ textarea {
 
 
 /* =========================================================
+   V2.2.2 RECORD LINK BADGES
+========================================================= */
+
+.record-distance {
+  display:
+    inline-block;
+
+  margin-top:
+    5px;
+
+  margin-right:
+    4px;
+
+  padding:
+    3px 7px;
+
+  border-radius:
+    7px;
+
+  background:
+    #edf8f1;
+
+  color:
+    #13713d;
+
+  font-size:
+    11px;
+
+  font-weight:
+    700;
+}
+
+
+.record-link-warning {
+  display:
+    inline-block;
+
+  margin-top:
+    5px;
+
+  margin-right:
+    4px;
+
+  padding:
+    3px 7px;
+
+  border-radius:
+    7px;
+
+  background:
+    #fff0f0;
+
+  color:
+    #c62828;
+
+  font-size:
+    11px;
+
+  font-weight:
+    700;
+}
+
+
+.record-next-time {
+  display:
+    inline-block;
+
+  margin-top:
+    5px;
+
+  margin-right:
+    4px;
+
+  padding:
+    3px 7px;
+
+  border-radius:
+    7px;
+
+  background:
+    #f3efff;
+
+  color:
+    #6842a8;
+
+  font-size:
+    11px;
+
+  font-weight:
+    700;
+}
+
+
+/* =========================================================
    SYNC BADGE
 ========================================================= */
 
 .sync-badge {
-  display: inline-flex;
-  align-items: center;
+  display:
+    inline-flex;
 
-  padding: 3px 7px;
+  align-items:
+    center;
 
-  border-radius: 999px;
+  padding:
+    3px 7px;
 
-  font-size: 10px;
-  font-weight: 700;
+  border-radius:
+    999px;
 
-  white-space: nowrap;
+  font-size:
+    10px;
+
+  font-weight:
+    700;
+
+  white-space:
+    nowrap;
 }
 
 
 .sync-badge.synced {
-  background: #e8f7ed;
-  color: #287641;
+  background:
+    #e8f7ed;
+
+  color:
+    #287641;
 }
 
 
 .sync-badge.pending {
-  background: #fff3d2;
-  color: #856000;
+  background:
+    #fff3d2;
+
+  color:
+    #856000;
 }
 
 
 .sync-badge.syncing {
-  background: #e5f0ff;
-  color: #2666aa;
+  background:
+    #e5f0ff;
+
+  color:
+    #2666aa;
 }
 
 
 .sync-badge.error {
-  background: #ffe3e3;
-  color: #a62d2d;
+  background:
+    #ffe3e3;
+
+  color:
+    #a62d2d;
 }
 
 
@@ -747,44 +1480,105 @@ textarea {
 ========================================================= */
 
 .date-group {
-  margin-bottom: 12px;
+  margin-bottom:
+    12px;
 }
 
 
 .date-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
 
   width: 100%;
 
-  border: 1px solid #e3e3e3;
-  border-radius: 13px;
+  border:
+    1px solid #e3e3e3;
 
-  padding: 11px 13px;
+  border-radius:
+    13px;
 
-  background: white;
+  padding:
+    11px 13px;
 
-  text-align: left;
+  background:
+    white;
+
+  text-align:
+    left;
 }
 
 
 .date-title {
-  font-size: 15px;
-  font-weight: 800;
+  font-size:
+    15px;
+
+  font-weight:
+    800;
 }
 
 
 .date-summary {
-  margin-top: 2px;
+  margin-top:
+    4px;
 
-  color: #777;
-  font-size: 11px;
+  color:
+    #666;
+
+  font-size:
+    11px;
+
+  line-height:
+    1.7;
+}
+
+
+.date-type-summary {
+  display:
+    flex;
+
+  flex-wrap:
+    wrap;
+
+  gap:
+    5px;
+
+  margin-top:
+    6px;
+}
+
+
+.date-type-chip {
+  display:
+    inline-block;
+
+  padding:
+    3px 7px;
+
+  border:
+    1px solid #e1e4e8;
+
+  border-radius:
+    999px;
+
+  background:
+    #ffffff;
+
+  color:
+    #555;
+
+  font-size:
+    11px;
 }
 
 
 .date-toggle {
-  color: #777;
+  color:
+    #777;
 
   transition:
     transform 0.2s;
@@ -792,13 +1586,15 @@ textarea {
 
 
 .date-records {
-  margin-top: 8px;
+  margin-top:
+    8px;
 }
 
 
 .date-group.collapsed
 .date-records {
-  display: none;
+  display:
+    none;
 }
 
 
@@ -814,11 +1610,14 @@ textarea {
 ========================================================= */
 
 .empty {
-  padding: 28px 10px;
+  padding:
+    28px 10px;
 
-  color: #999;
+  color:
+    #999;
 
-  text-align: center;
+  text-align:
+    center;
 }
 
 
@@ -827,27 +1626,36 @@ textarea {
 ========================================================= */
 
 .rating-row {
-  display: flex;
-  gap: 4px;
+  display:
+    flex;
+
+  gap:
+    4px;
 }
 
 
 .rating-star {
-  border: 0;
-  background: transparent;
+  border:
+    0;
 
-  padding: 0;
+  background:
+    transparent;
 
-  color: #c7c7c7;
+  padding:
+    0;
 
-  font-size: 30px;
+  color:
+    #c7c7c7;
+
+  font-size:
+    30px;
 }
 
 
 .rating-star.active {
-  color: #f2ae00;
+  color:
+    #f2ae00;
 }
-
 
 /* =========================================================
    SYNC PAGE
@@ -855,23 +1663,34 @@ textarea {
 
 .sync-setting {
   display: flex;
+
   align-items: center;
-  justify-content: space-between;
+
+  justify-content:
+    space-between;
+
   gap: 14px;
 }
 
 
 .sync-setting-title {
-  font-weight: 800;
+  font-weight:
+    800;
 }
 
 
 .sync-setting-desc {
-  margin-top: 4px;
+  margin-top:
+    4px;
 
-  color: #777;
-  font-size: 12px;
-  line-height: 1.5;
+  color:
+    #777;
+
+  font-size:
+    12px;
+
+  line-height:
+    1.5;
 }
 
 
@@ -880,32 +1699,47 @@ textarea {
 ========================================================= */
 
 .toggle {
-  position: relative;
+  position:
+    relative;
 
-  flex: 0 0 auto;
+  flex:
+    0 0 auto;
 
-  width: 52px;
-  height: 30px;
+  width:
+    52px;
+
+  height:
+    30px;
 }
 
 
 .toggle input {
-  position: absolute;
+  position:
+    absolute;
 
-  width: 1px;
-  height: 1px;
+  width:
+    1px;
 
-  opacity: 0;
+  height:
+    1px;
+
+  opacity:
+    0;
 }
 
 
 .toggle-slider {
-  position: absolute;
-  inset: 0;
+  position:
+    absolute;
 
-  border-radius: 999px;
+  inset:
+    0;
 
-  background: #cccccc;
+  border-radius:
+    999px;
+
+  background:
+    #cccccc;
 
   transition:
     background 0.2s;
@@ -913,23 +1747,38 @@ textarea {
 
 
 .toggle-slider::after {
-  content: "";
+  content:
+    "";
 
-  position: absolute;
+  position:
+    absolute;
 
-  top: 3px;
-  left: 3px;
+  top:
+    3px;
 
-  width: 24px;
-  height: 24px;
+  left:
+    3px;
 
-  border-radius: 50%;
+  width:
+    24px;
 
-  background: white;
+  height:
+    24px;
+
+  border-radius:
+    50%;
+
+  background:
+    white;
 
   box-shadow:
     0 1px 5px
-    rgba(0, 0, 0, 0.25);
+    rgba(
+      0,
+      0,
+      0,
+      0.25
+    );
 
   transition:
     transform 0.2s;
@@ -938,7 +1787,8 @@ textarea {
 
 .toggle input:checked +
 .toggle-slider {
-  background: #2f855a;
+  background:
+    #2f855a;
 }
 
 
@@ -954,34 +1804,53 @@ textarea {
 ========================================================= */
 
 .sync-count-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      4,
+      1fr
+    );
+
+  gap:
+    8px;
 }
 
 
 .sync-count-box {
-  padding: 12px 6px;
+  padding:
+    12px 6px;
 
-  border-radius: 11px;
+  border-radius:
+    11px;
 
-  background: #f7f8fa;
+  background:
+    #f7f8fa;
 
-  text-align: center;
+  text-align:
+    center;
 }
 
 
 .sync-count-value {
-  font-size: 20px;
-  font-weight: 800;
+  font-size:
+    20px;
+
+  font-weight:
+    800;
 }
 
 
 .sync-count-label {
-  margin-top: 3px;
+  margin-top:
+    3px;
 
-  color: #777;
-  font-size: 10px;
+  color:
+    #777;
+
+  font-size:
+    10px;
 }
 
 
@@ -990,34 +1859,53 @@ textarea {
 ========================================================= */
 
 .local-count-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      4,
+      1fr
+    );
+
+  gap:
+    8px;
 }
 
 
 .local-count-box {
-  padding: 11px 6px;
+  padding:
+    11px 6px;
 
-  border-radius: 11px;
+  border-radius:
+    11px;
 
-  background: #f5f7fb;
+  background:
+    #f5f7fb;
 
-  text-align: center;
+  text-align:
+    center;
 }
 
 
 .local-count-value {
-  font-size: 19px;
-  font-weight: 800;
+  font-size:
+    19px;
+
+  font-weight:
+    800;
 }
 
 
 .local-count-label {
-  margin-top: 2px;
+  margin-top:
+    2px;
 
-  color: #777;
-  font-size: 10px;
+  color:
+    #777;
+
+  font-size:
+    10px;
 }
 
 
@@ -1026,14 +1914,20 @@ textarea {
 ========================================================= */
 
 .file-input {
-  width: 100%;
+  width:
+    100%;
 
-  padding: 9px;
+  padding:
+    9px;
 
-  border: 1px dashed #bbbbbb;
-  border-radius: 11px;
+  border:
+    1px dashed #bbbbbb;
 
-  background: #fafafa;
+  border-radius:
+    11px;
+
+  background:
+    #fafafa;
 }
 
 
@@ -1042,19 +1936,29 @@ textarea {
 ========================================================= */
 
 .startup-error {
-  display: none;
+  display:
+    none;
 
-  margin: 14px;
-  padding: 12px;
+  margin:
+    14px;
 
-  border: 1px solid #e9a6a6;
-  border-radius: 11px;
+  padding:
+    12px;
 
-  background: #fff0f0;
+  border:
+    1px solid #e9a6a6;
 
-  color: #a12222;
+  border-radius:
+    11px;
 
-  font-size: 13px;
+  background:
+    #fff0f0;
+
+  color:
+    #a12222;
+
+  font-size:
+    13px;
 }
 
 
@@ -1063,34 +1967,59 @@ textarea {
 ========================================================= */
 
 .toast {
-  position: fixed;
+  position:
+    fixed;
 
-  left: 50%;
-  bottom: 24px;
+  left:
+    50%;
 
-  z-index: 5000;
+  bottom:
+    calc(
+      24px +
+      env(safe-area-inset-bottom)
+    );
+
+  z-index:
+    5000;
 
   transform:
     translateX(-50%)
     translateY(20px);
 
-  max-width: calc(100vw - 40px);
+  max-width:
+    calc(
+      100vw -
+      40px
+    );
 
-  padding: 10px 16px;
+  padding:
+    10px 16px;
 
-  border-radius: 999px;
+  border-radius:
+    999px;
 
   background:
-    rgba(30, 30, 30, 0.94);
+    rgba(
+      30,
+      30,
+      30,
+      0.94
+    );
 
-  color: white;
+  color:
+    white;
 
-  font-size: 13px;
-  font-weight: 700;
+  font-size:
+    13px;
 
-  opacity: 0;
+  font-weight:
+    700;
 
-  pointer-events: none;
+  opacity:
+    0;
+
+  pointer-events:
+    none;
 
   transition:
     all 0.2s;
@@ -1098,7 +2027,8 @@ textarea {
 
 
 .toast.show {
-  opacity: 1;
+  opacity:
+    1;
 
   transform:
     translateX(-50%)
@@ -1111,72 +2041,112 @@ textarea {
 ========================================================= */
 
 .modal {
-  display: none;
+  display:
+    none;
 
-  position: fixed;
-  inset: 0;
+  position:
+    fixed;
 
-  z-index: 6000;
+  inset:
+    0;
 
-  align-items: center;
-  justify-content: center;
+  z-index:
+    6000;
 
-  padding: 20px;
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  padding:
+    20px;
 
   background:
-    rgba(0, 0, 0, 0.45);
+    rgba(
+      0,
+      0,
+      0,
+      0.45
+    );
 }
 
 
 .modal.show {
-  display: flex;
+  display:
+    flex;
 }
 
 
 .modal-card {
-  width: 100%;
-  max-width: 420px;
+  width:
+    100%;
 
-  padding: 18px;
+  max-width:
+    420px;
 
-  border-radius: 16px;
+  padding:
+    18px;
 
-  background: white;
+  border-radius:
+    16px;
+
+  background:
+    white;
 
   box-shadow:
     0 14px 40px
-    rgba(0, 0, 0, 0.2);
+    rgba(
+      0,
+      0,
+      0,
+      0.2
+    );
 }
 
 
 .modal-title {
-  margin-bottom: 9px;
+  margin-bottom:
+    9px;
 
-  font-size: 18px;
-  font-weight: 800;
+  font-size:
+    18px;
+
+  font-weight:
+    800;
 }
 
 
 .modal-message {
-  color: #555;
+  color:
+    #555;
 
-  font-size: 13px;
-  line-height: 1.7;
+  font-size:
+    13px;
 
-  white-space: pre-wrap;
+  line-height:
+    1.7;
+
+  white-space:
+    pre-wrap;
 }
 
 
 .modal-actions {
-  display: flex;
-  gap: 9px;
+  display:
+    flex;
 
-  margin-top: 16px;
+  gap:
+    9px;
+
+  margin-top:
+    16px;
 }
 
 
 .modal-actions button {
-  flex: 1;
+  flex:
+    1;
 }
 
 
@@ -1185,15 +2155,21 @@ textarea {
 ========================================================= */
 
 .app-info {
-  margin-top: 15px;
+  margin-top:
+    15px;
 
-  color: #999;
-  font-size: 10px;
-  text-align: center;
-  line-height: 1.6;
+  color:
+    #999;
+
+  font-size:
+    10px;
+
+  text-align:
+    center;
+
+  line-height:
+    1.6;
 }
-
-
 /* =========================================================
    MOBILE
 ========================================================= */
@@ -1203,76 +2179,136 @@ textarea {
 ) {
 
   .main {
-    padding: 10px;
+    padding:
+      10px;
   }
 
 
   .header-top {
-    padding-left: 12px;
-    padding-right: 12px;
+    padding-left:
+      12px;
+
+    padding-right:
+      12px;
   }
 
 
   .app-title {
-    font-size: 20px;
+    font-size:
+      20px;
   }
 
 
   .tab-button {
-    padding: 9px 2px;
+    padding:
+      9px 2px;
 
-    font-size: 11px;
+    font-size:
+      11px;
   }
 
 
   #footprintMap {
-    height: 280px;
+    height:
+      280px;
   }
 
 
   .grid-2,
   .grid-3 {
-    grid-template-columns: 1fr;
+    grid-template-columns:
+      1fr;
   }
 
 
   .type-grid {
     grid-template-columns:
-      repeat(4, 1fr);
+      repeat(
+        4,
+        1fr
+      );
   }
 
 
   .type-button {
-    min-height: 65px;
+    min-height:
+      65px;
 
-    padding: 5px;
+    padding:
+      5px;
 
-    font-size: 11px;
+    font-size:
+      11px;
   }
 
 
   .type-icon {
-    font-size: 21px;
+    font-size:
+      21px;
+  }
+
+
+  .trip-summary-grid,
+  .footprint-stats-grid {
+    grid-template-columns:
+      repeat(
+        3,
+        1fr
+      );
+  }
+
+
+  .trip-summary-value,
+  .footprint-stat-value {
+    font-size:
+      16px;
+  }
+
+
+  .trip-summary-label,
+  .footprint-stat-label {
+    font-size:
+      10px;
+  }
+
+
+  .footprint-timeline-actions {
+    grid-template-columns:
+      1fr 1fr;
+  }
+
+
+  .record-actions {
+    flex-direction:
+      row;
   }
 
 
   .sync-count-grid,
   .local-count-grid {
     grid-template-columns:
-      repeat(2, 1fr);
+      repeat(
+        2,
+        1fr
+      );
   }
 
 
   .nearby-item {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items:
+      flex-start;
 
-    gap: 2px;
+    flex-direction:
+      column;
+
+    gap:
+      2px;
   }
 
 
   .nearby-meta {
-    flex: none;
+    flex:
+      none;
   }
 
 }
@@ -1287,18 +2323,96 @@ textarea {
 ) {
 
   .header-status {
-    gap: 4px;
+    gap:
+      4px;
   }
 
 
   .status-pill {
-    font-size: 10px;
+    font-size:
+      10px;
   }
 
 
   .type-grid {
     grid-template-columns:
-      repeat(2, 1fr);
+      repeat(
+        2,
+        1fr
+      );
+  }
+
+
+  .trip-summary-grid,
+  .footprint-stats-grid {
+    gap:
+      5px;
+  }
+
+
+  .trip-summary-stat,
+  .footprint-stat-box {
+    padding:
+      9px 4px;
+  }
+
+
+  .trip-summary-value,
+  .footprint-stat-value {
+    font-size:
+      15px;
+  }
+
+
+  .trip-summary-label,
+  .footprint-stat-label {
+    font-size:
+      9px;
+  }
+
+
+  .footprint-timeline-actions {
+    gap:
+      6px;
+  }
+
+
+  .footprint-timeline-actions button {
+    padding:
+      10px 6px;
+
+    font-size:
+      12px;
+  }
+
+
+  .record-title {
+    font-size:
+      16px;
+  }
+
+
+  .record-number {
+    width:
+      24px;
+
+    height:
+      24px;
+
+    font-size:
+      11px;
+  }
+
+
+  .route-number-marker {
+    width:
+      28px;
+
+    height:
+      28px;
+
+    font-size:
+      12px;
   }
 
 }
