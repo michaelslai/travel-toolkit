@@ -1,16 +1,19 @@
 /* =========================================================
-   Travel Toolkit V2.2.0 Modular
+   Travel Toolkit V2.2.3 Modular
    File: js/food.js
    Modified: 2026-09-12
 
    Changes:
-   - 從 V2.1.2 抽離 Food CRUD
-   - 保留 Local-first
-   - 保留 GPS / Reverse Geocode
-   - 保留評分、推薦、餐別、分類
-   - 保留 Food → Expense 關聯
-   - 不直接處理 D1 Sync Engine
-   - 使用 Event Delegation
+   - 對齊單機版 Food V2.4.1
+   - 保留 Local-first + D1 Sync
+   - 保留 Food → Expense
+   - GPS + Reverse Geocode
+   - 新增 Nearby Food Places
+   - 新增 Local Photo
+   - 新增照片壓縮 / 預覽 / 移除
+   - 新增統計 / 篩選 / 日期分組
+   - photo_local 僅存在 Local IndexedDB
+   - photo_url 保留給未來 Cloudflare R2
 ========================================================= */
 
 import {
@@ -37,13 +40,99 @@ import {
    MODULE STATE
 ========================================================= */
 
-let foodRecords = [];
-let expenses = [];
-let trips = [];
+let foodRecords =
+  [];
 
-let foodLocation = null;
-let foodAddressDetails = null;
-let foodRating = 0;
+let expenses =
+  [];
+
+let trips =
+  [];
+
+
+let foodLocation =
+  null;
+
+let foodAddressDetails =
+  null;
+
+let foodRating =
+  0;
+
+
+/*
+  V2.2.3
+  Local-only Base64 image.
+
+  不同步到 D1。
+*/
+let currentFoodPhoto =
+  null;
+
+
+/*
+  true：
+  使用者在編輯模式下主動按了「移除照片」。
+
+  用來區分：
+  - 沒有選新照片 → 保留舊照片
+  - 主動移除 → 清掉舊照片
+*/
+let removeFoodPhotoRequested =
+  false;
+
+
+/*
+  Nearby
+*/
+let foodNearbyPlaces =
+  [];
+
+
+/*
+  Filter
+*/
+let selectedFoodMealFilter =
+  "";
+
+let selectedFoodCategoryFilter =
+  "";
+
+let foodRecommendedOnly =
+  false;
+
+let foodFilterPanelOpen =
+  false;
+
+
+/*
+  Date group collapse
+*/
+const collapsedFoodDates =
+  new Set();
+
+
+/* =========================================================
+   NEARBY CONFIG
+========================================================= */
+
+const FOOD_NEARBY_RADIUS =
+  500;
+
+const FOOD_NEARBY_LIMIT =
+  20;
+
+const FOOD_OVERPASS_TIMEOUT =
+  18000;
+
+
+const FOOD_OVERPASS_SERVERS = [
+
+  "https://overpass-api.de/api/interpreter",
+
+  "https://overpass.kumi.systems/api/interpreter"
+
+];
 
 
 /* =========================================================
@@ -76,12 +165,56 @@ export function initFoodModule(
 ) {
 
   hooks = {
+
     ...hooks,
     ...options
+
   };
 
 
   bindFoodEvents();
+
+
+  /*
+    初始表單日期 / 時間。
+  */
+  const date =
+    getElement(
+      "foodDate"
+    );
+
+
+  if (
+    date &&
+    !date.value
+  ) {
+
+    date.value =
+      getLocalDate();
+
+  }
+
+
+  const time =
+    getElement(
+      "foodTime"
+    );
+
+
+  if (
+    time &&
+    !time.value
+  ) {
+
+    time.value =
+      getLocalTime();
+
+  }
+
+
+  renderFoodTimezone();
+
+  renderFoodRating();
 
 }
 
@@ -107,6 +240,9 @@ export function setFoodData(
   trips =
     data.trips ||
     [];
+
+
+  renderFoodRecords();
 
 }
 
@@ -146,46 +282,53 @@ function pad(
 }
 
 
-function getLocalDate() {
-
-  const now =
-    new Date();
-
+function getLocalDate(
+  date = new Date()
+) {
 
   return (
-    now.getFullYear() +
+
+    date.getFullYear() +
     "-" +
+
     pad(
-      now.getMonth() +
+      date.getMonth() +
       1
     ) +
     "-" +
+
     pad(
-      now.getDate()
+      date.getDate()
     )
+
   );
 
 }
 
 
-function getLocalTime() {
-
-  const now =
-    new Date();
-
+function getLocalTime(
+  date = new Date()
+) {
 
   return (
+
     pad(
-      now.getHours()
+      date.getHours()
     ) +
     ":" +
+
     pad(
-      now.getMinutes()
+      date.getMinutes()
     )
+
   );
 
 }
 
+
+/* =========================================================
+   TIMEZONE
+========================================================= */
 
 function getTimezoneInfo() {
 
@@ -206,8 +349,11 @@ function getTimezoneInfo() {
 
 
   const sign =
-    offsetMinutes >= 0
+    offsetMinutes >=
+      0
+
       ? "+"
+
       : "-";
 
 
@@ -237,12 +383,47 @@ function getTimezoneInfo() {
       pad(
         abs %
         60
-      )
+      ),
+
+    offset_minutes:
+      offsetMinutes
 
   };
 
 }
 
+
+function renderFoodTimezone() {
+
+  const element =
+    getElement(
+      "foodTimezoneText"
+    );
+
+
+  if (
+    !element
+  ) {
+
+    return;
+
+  }
+
+
+  const info =
+    getTimezoneInfo();
+
+
+  element.textContent =
+
+    `🌏 ${info.timezone || "Local"} · GMT${info.timezone_offset}`;
+
+}
+
+
+/* =========================================================
+   COMBINE DATE / TIME
+========================================================= */
 
 function combineLocalDateTime(
   dateValue,
@@ -335,8 +516,10 @@ function getTripName(
 
 
   return (
+
     trip?.name ||
     "未分類旅程"
+
   );
 
 }
@@ -377,6 +560,7 @@ function getGPSPosition() {
           reject,
 
           {
+
             enableHighAccuracy:
               true,
 
@@ -385,6 +569,7 @@ function getGPSPosition() {
 
             maximumAge:
               0
+
           }
 
         );
@@ -396,7 +581,692 @@ function getGPSPosition() {
 
 
 /* =========================================================
-   FOOD GPS
+   DISTANCE
+========================================================= */
+
+function calculateFoodDistance(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+) {
+
+  const earthRadius =
+    6371000;
+
+
+  const p1 =
+
+    Number(
+      lat1
+    ) *
+    Math.PI /
+    180;
+
+
+  const p2 =
+
+    Number(
+      lat2
+    ) *
+    Math.PI /
+    180;
+
+
+  const deltaP =
+
+    (
+      Number(
+        lat2
+      ) -
+      Number(
+        lat1
+      )
+    ) *
+    Math.PI /
+    180;
+
+
+  const deltaL =
+
+    (
+      Number(
+        lon2
+      ) -
+      Number(
+        lon1
+      )
+    ) *
+    Math.PI /
+    180;
+
+
+  const a =
+
+    Math.sin(
+      deltaP /
+      2
+    ) ** 2 +
+
+    Math.cos(
+      p1
+    ) *
+
+    Math.cos(
+      p2
+    ) *
+
+    Math.sin(
+      deltaL /
+      2
+    ) ** 2;
+
+
+  const c =
+
+    2 *
+
+    Math.atan2(
+
+      Math.sqrt(
+        a
+      ),
+
+      Math.sqrt(
+        1 -
+        a
+      )
+
+    );
+
+
+  return Math.round(
+
+    earthRadius *
+    c
+
+  );
+
+}
+
+
+/* =========================================================
+   PLACE TYPE
+========================================================= */
+
+function getFoodPlaceTypeText(
+  place
+) {
+
+  const type =
+    place.amenity ||
+    place.shop ||
+    "";
+
+
+  const map = {
+
+    restaurant:
+      "餐廳",
+
+    cafe:
+      "咖啡店",
+
+    fast_food:
+      "速食",
+
+    food_court:
+      "美食廣場",
+
+    ice_cream:
+      "冰品",
+
+    bar:
+      "酒吧",
+
+    pub:
+      "居酒屋 / 酒吧",
+
+    bakery:
+      "麵包店",
+
+    convenience:
+      "便利商店",
+
+    deli:
+      "熟食店",
+
+    pastry:
+      "甜點店",
+
+    coffee:
+      "咖啡店",
+
+    confectionery:
+      "甜點店"
+
+  };
+
+
+  return (
+
+    map[
+      type
+    ] ||
+    "店家"
+
+  );
+
+}
+
+
+/* =========================================================
+   SEARCH NEARBY FOOD PLACES
+========================================================= */
+
+async function searchNearbyFoodPlaces(
+  lat,
+  lon
+) {
+
+  const query = `
+
+[out:json][timeout:18];
+
+(
+
+  nwr
+  ["amenity"~"restaurant|cafe|fast_food|food_court|ice_cream|bar|pub"]
+  (around:${FOOD_NEARBY_RADIUS},${lat},${lon});
+
+  nwr
+  ["shop"~"bakery|convenience|deli|pastry|coffee|confectionery"]
+  (around:${FOOD_NEARBY_RADIUS},${lat},${lon});
+
+);
+
+out center tags;
+
+  `;
+
+
+  let lastError =
+    null;
+
+
+  for (
+    const server of
+    FOOD_OVERPASS_SERVERS
+  ) {
+
+    const controller =
+      new AbortController();
+
+
+    const timer =
+      setTimeout(
+        () => {
+
+          controller.abort();
+
+        },
+        FOOD_OVERPASS_TIMEOUT
+      );
+
+
+    try {
+
+      const response =
+        await fetch(
+          server,
+          {
+
+            method:
+              "POST",
+
+            headers: {
+
+              "Content-Type":
+                "application/x-www-form-urlencoded;charset=UTF-8"
+
+            },
+
+            body:
+
+              "data=" +
+
+              encodeURIComponent(
+                query
+              ),
+
+            signal:
+              controller.signal
+
+          }
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+
+          "附近店家服務 HTTP " +
+          response.status
+
+        );
+
+      }
+
+
+      const data =
+        await response.json();
+
+
+      return parseNearbyFoodPlaces(
+
+        data,
+        lat,
+        lon
+
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      lastError =
+        error;
+
+    }
+    finally {
+
+      clearTimeout(
+        timer
+      );
+
+    }
+
+  }
+
+
+  throw (
+
+    lastError ||
+
+    new Error(
+      "附近店家服務目前無法使用"
+    )
+
+  );
+
+}
+
+
+/* =========================================================
+   PARSE NEARBY
+========================================================= */
+
+function parseNearbyFoodPlaces(
+  data,
+  userLat,
+  userLon
+) {
+
+  const places =
+    [];
+
+
+  for (
+    const element of
+    data.elements ||
+    []
+  ) {
+
+    const tags =
+      element.tags ||
+      {};
+
+
+    const name =
+
+      tags["name:zh-Hant"] ||
+      tags["name:zh"] ||
+      tags["name:ja"] ||
+      tags.name ||
+      tags.brand;
+
+
+    if (
+      !name
+    ) {
+
+      continue;
+
+    }
+
+
+    const placeLat =
+
+      element.lat ??
+      element.center?.lat;
+
+
+    const placeLon =
+
+      element.lon ??
+      element.center?.lon;
+
+
+    if (
+      placeLat ==
+        null ||
+      placeLon ==
+        null
+    ) {
+
+      continue;
+
+    }
+
+
+    places.push(
+      {
+
+        name,
+
+        lat:
+          Number(
+            placeLat
+          ),
+
+        lon:
+          Number(
+            placeLon
+          ),
+
+        distance:
+
+          calculateFoodDistance(
+
+            userLat,
+            userLon,
+
+            placeLat,
+            placeLon
+
+          ),
+
+        amenity:
+          tags.amenity ||
+          "",
+
+        shop:
+          tags.shop ||
+          "",
+
+        cuisine:
+          tags.cuisine ||
+          ""
+
+      }
+    );
+
+  }
+
+
+  /*
+    同名店家去重，
+    保留距離最近的一筆。
+  */
+
+  const unique =
+    new Map();
+
+
+  for (
+    const place of
+    places
+  ) {
+
+    const key =
+      place.name
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      !unique.has(
+        key
+      ) ||
+      place.distance <
+        unique.get(
+          key
+        ).distance
+    ) {
+
+      unique.set(
+        key,
+        place
+      );
+
+    }
+
+  }
+
+
+  return Array
+    .from(
+      unique.values()
+    )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        a.distance -
+        b.distance
+    )
+    .slice(
+      0,
+      FOOD_NEARBY_LIMIT
+    );
+
+}
+
+
+/* =========================================================
+   RENDER NEARBY
+========================================================= */
+
+function renderFoodNearbyPlaces() {
+
+  const wrap =
+    getElement(
+      "foodNearbyWrap"
+    );
+
+
+  const list =
+    getElement(
+      "foodNearbyList"
+    );
+
+
+  if (
+    !wrap ||
+    !list
+  ) {
+
+    return;
+
+  }
+
+
+  wrap.style.display =
+    "block";
+
+
+  if (
+    !foodNearbyPlaces.length
+  ) {
+
+    list.innerHTML = `
+
+      <div class="gps-status">
+
+        ${FOOD_NEARBY_RADIUS} 公尺內沒有找到已登錄名稱的店家。
+
+        <br>
+
+        你仍然可以手動輸入店名。
+
+      </div>
+
+    `;
+
+
+    return;
+
+  }
+
+
+  list.innerHTML =
+
+    foodNearbyPlaces
+      .map(
+        (
+          place,
+          index
+        ) => `
+
+          <button
+            type="button"
+            class="food-nearby-item"
+            data-food-nearby-index="${index}"
+          >
+
+            <span class="food-nearby-name">
+
+              ${escapeHtml(
+                place.name
+              )}
+
+            </span>
+
+
+            <span class="food-nearby-meta">
+
+              ${escapeHtml(
+                getFoodPlaceTypeText(
+                  place
+                )
+              )}
+
+              ・
+
+              約
+              ${escapeHtml(
+                place.distance
+              )}
+              公尺
+
+              ${
+                place.cuisine
+
+                  ? "・" +
+                    escapeHtml(
+                      place.cuisine
+                    )
+
+                  : ""
+              }
+
+            </span>
+
+          </button>
+
+        `
+      )
+      .join(
+        ""
+      );
+
+}
+
+
+/* =========================================================
+   SELECT NEARBY
+========================================================= */
+
+function selectFoodNearbyPlace(
+  index
+) {
+
+  const place =
+    foodNearbyPlaces[
+      index
+    ];
+
+
+  if (
+    !place
+  ) {
+
+    return;
+
+  }
+
+
+  const input =
+    getElement(
+      "foodShopName"
+    );
+
+
+  if (
+    input
+  ) {
+
+    input.value =
+      place.name;
+
+  }
+
+
+  const selected =
+    getElement(
+      "foodSelectedShop"
+    );
+
+
+  if (
+    selected
+  ) {
+
+    selected.textContent =
+
+      `✓ 已選擇：${place.name}・約 ${place.distance} 公尺`;
+
+    selected.style.display =
+      "block";
+
+  }
+
+
+  hooks.showToast(
+
+    `🏪 已選擇 ${place.name}`
+
+  );
+
+}
+
+
+/* =========================================================
+   FOOD GPS + ADDRESS + NEARBY
 ========================================================= */
 
 export async function getFoodGPS() {
@@ -413,6 +1283,18 @@ export async function getFoodGPS() {
     );
 
 
+  const nearbyWrap =
+    getElement(
+      "foodNearbyWrap"
+    );
+
+
+  const nearbyList =
+    getElement(
+      "foodNearbyList"
+    );
+
+
   if (
     button
   ) {
@@ -420,9 +1302,8 @@ export async function getFoodGPS() {
     button.disabled =
       true;
 
-
     button.textContent =
-      "📡 定位中...";
+      "📡 正在取得 GPS...";
 
   }
 
@@ -432,7 +1313,17 @@ export async function getFoodGPS() {
   ) {
 
     status.textContent =
-      "正在取得 GPS 位置...";
+      "正在取得目前位置...";
+
+  }
+
+
+  if (
+    nearbyWrap
+  ) {
+
+    nearbyWrap.style.display =
+      "none";
 
   }
 
@@ -468,29 +1359,60 @@ export async function getFoodGPS() {
 
       status.textContent =
 
-        `GPS ±${foodLocation.accuracy}m，正在取得地址...`;
+        `GPS ±${foodLocation.accuracy}m，正在取得地址與附近店家...`;
 
     }
 
 
-    try {
+    /*
+      Reverse Geocode 與 Nearby
+      同時執行。
+    */
 
-      const result =
-        await api(
+    const results =
+      await Promise.allSettled(
+        [
 
-          "/api/reverse-geocode" +
+          api(
 
-          "?lat=" +
-          encodeURIComponent(
-            foodLocation.latitude
-          ) +
+            "/api/reverse-geocode" +
 
-          "&lon=" +
-          encodeURIComponent(
+            "?lat=" +
+
+            encodeURIComponent(
+              foodLocation.latitude
+            ) +
+
+            "&lon=" +
+
+            encodeURIComponent(
+              foodLocation.longitude
+            )
+
+          ),
+
+          searchNearbyFoodPlaces(
+
+            foodLocation.latitude,
             foodLocation.longitude
+
           )
 
-        );
+        ]
+      );
+
+
+    /* =====================================================
+       ADDRESS
+    ===================================================== */
+
+    if (
+      results[0].status ===
+      "fulfilled"
+    ) {
+
+      const result =
+        results[0].value;
 
 
       foodLocation.address =
@@ -508,18 +1430,80 @@ export async function getFoodGPS() {
         null;
 
     }
-    catch (
-      error
-    ) {
+    else {
 
       console.warn(
+
         "Food reverse geocode failed:",
-        error
+
+        results[0].reason
+
       );
 
 
       foodAddressDetails =
         null;
+
+    }
+
+
+    /* =====================================================
+       NEARBY
+    ===================================================== */
+
+    if (
+      results[1].status ===
+      "fulfilled"
+    ) {
+
+      foodNearbyPlaces =
+        results[1].value ||
+        [];
+
+    }
+    else {
+
+      console.warn(
+
+        "Food nearby search failed:",
+
+        results[1].reason
+
+      );
+
+
+      foodNearbyPlaces =
+        [];
+
+    }
+
+
+    renderFoodNearbyPlaces();
+
+
+    /*
+      與 Footprint V2.2.1 相同概念：
+      店名欄位為空時，自動帶最近店家。
+
+      不覆蓋使用者已經輸入的店名。
+    */
+
+    const shopInput =
+      getElement(
+        "foodShopName"
+      );
+
+
+    if (
+      foodNearbyPlaces.length >
+        0 &&
+      shopInput &&
+      !shopInput.value.trim()
+    ) {
+
+      selectFoodNearbyPlace(
+        0
+      );
 
     }
 
@@ -543,13 +1527,17 @@ export async function getFoodGPS() {
             : "<br>地址辨識失敗，但 GPS 已保留"
         }
 
+        <br>
+
+        🏪 找到 ${foodNearbyPlaces.length} 個附近店家
+
       `;
 
     }
 
 
     hooks.showToast(
-      "📍 美食位置已取得"
+      "📍 美食位置與附近店家已取得"
     );
 
   }
@@ -594,6 +1582,14 @@ export async function getFoodGPS() {
         "GPS 定位逾時，請再試一次";
 
     }
+    else if (
+      error.message
+    ) {
+
+      message =
+        error.message;
+
+    }
 
 
     if (
@@ -602,6 +1598,16 @@ export async function getFoodGPS() {
 
       status.textContent =
         message;
+
+    }
+
+
+    if (
+      nearbyList
+    ) {
+
+      nearbyList.innerHTML =
+        "";
 
     }
 
@@ -623,15 +1629,13 @@ export async function getFoodGPS() {
 
 
       button.textContent =
-        "📍 取得目前位置";
+        "📍 重新定位＋搜尋附近店家";
 
     }
 
   }
 
 }
-
-
 /* =========================================================
    RATING
 ========================================================= */
@@ -677,14 +1681,14 @@ function renderFoodRating() {
           .toggle(
             "active",
             value <=
-            foodRating
+              foodRating
           );
 
 
         button.textContent =
 
           value <=
-          foodRating
+            foodRating
 
             ? "★"
 
@@ -697,10 +1701,581 @@ function renderFoodRating() {
 
 
 /* =========================================================
+   PHOTO PREVIEW
+========================================================= */
+
+function renderFoodPhotoPreview() {
+
+  const wrap =
+    getElement(
+      "foodPhotoPreviewWrap"
+    );
+
+
+  const preview =
+    getElement(
+      "foodPhotoPreview"
+    );
+
+
+  if (
+    !wrap ||
+    !preview
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    currentFoodPhoto
+  ) {
+
+    preview.src =
+      currentFoodPhoto;
+
+
+    wrap.classList.add(
+      "show"
+    );
+
+  }
+  else {
+
+    preview.removeAttribute(
+      "src"
+    );
+
+
+    wrap.classList.remove(
+      "show"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   PHOTO COMPRESSION
+========================================================= */
+
+function compressFoodImage(
+  file
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      if (
+        !file
+      ) {
+
+        reject(
+          new Error(
+            "沒有選擇照片"
+          )
+        );
+
+        return;
+
+      }
+
+
+      if (
+        !file.type.startsWith(
+          "image/"
+        )
+      ) {
+
+        reject(
+          new Error(
+            "選擇的檔案不是圖片"
+          )
+        );
+
+        return;
+
+      }
+
+
+      const reader =
+        new FileReader();
+
+
+      reader.onload =
+        event => {
+
+          const image =
+            new Image();
+
+
+          image.onload =
+            () => {
+
+              /*
+                與單機版 Food V2.4.1 一致：
+                最長邊 1600px。
+              */
+
+              const maxSize =
+                1600;
+
+
+              let width =
+                image.width;
+
+
+              let height =
+                image.height;
+
+
+              if (
+                width >
+                  maxSize ||
+                height >
+                  maxSize
+              ) {
+
+                const scale =
+
+                  Math.min(
+
+                    maxSize /
+                      width,
+
+                    maxSize /
+                      height
+
+                  );
+
+
+                width =
+                  Math.round(
+
+                    width *
+                    scale
+
+                  );
+
+
+                height =
+                  Math.round(
+
+                    height *
+                    scale
+
+                  );
+
+              }
+
+
+              const canvas =
+                document.createElement(
+                  "canvas"
+                );
+
+
+              canvas.width =
+                width;
+
+
+              canvas.height =
+                height;
+
+
+              const context =
+                canvas.getContext(
+                  "2d"
+                );
+
+
+              if (
+                !context
+              ) {
+
+                reject(
+                  new Error(
+                    "瀏覽器無法建立圖片處理畫布"
+                  )
+                );
+
+                return;
+
+              }
+
+
+              /*
+                白底處理：
+                PNG / HEIC 轉 JPEG 時，
+                避免透明區變成黑色。
+              */
+
+              context.fillStyle =
+                "#ffffff";
+
+
+              context.fillRect(
+                0,
+                0,
+                width,
+                height
+              );
+
+
+              context.drawImage(
+
+                image,
+
+                0,
+                0,
+
+                width,
+                height
+
+              );
+
+
+              try {
+
+                /*
+                  與單機版一致：
+                  JPEG quality 0.78。
+                */
+
+                const result =
+                  canvas.toDataURL(
+                    "image/jpeg",
+                    0.78
+                  );
+
+
+                resolve(
+                  result
+                );
+
+              }
+              catch (
+                error
+              ) {
+
+                reject(
+                  error
+                );
+
+              }
+
+            };
+
+
+          image.onerror =
+            () => {
+
+              reject(
+                new Error(
+                  "無法讀取圖片"
+                )
+              );
+
+            };
+
+
+          image.src =
+            event.target.result;
+
+        };
+
+
+      reader.onerror =
+        () => {
+
+          reject(
+            new Error(
+              "無法讀取照片"
+            )
+          );
+
+        };
+
+
+      reader.readAsDataURL(
+        file
+      );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   PHOTO SELECT
+========================================================= */
+
+async function handleFoodPhotoSelected(
+  event
+) {
+
+  const file =
+    event.target.files?.[
+      0
+    ];
+
+
+  if (
+    !file
+  ) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const input =
+      getElement(
+        "foodPhotoInput"
+      );
+
+
+    if (
+      input
+    ) {
+
+      input.disabled =
+        true;
+
+    }
+
+
+    hooks.showToast(
+      "📷 正在處理照片..."
+    );
+
+
+    currentFoodPhoto =
+      await compressFoodImage(
+        file
+      );
+
+
+    /*
+      選了新照片，
+      代表取消原本的「移除照片」狀態。
+    */
+
+    removeFoodPhotoRequested =
+      false;
+
+
+    renderFoodPhotoPreview();
+
+
+    hooks.showToast(
+      "📷 照片已準備完成"
+    );
+
+  }
+  catch (
+    error
+  ) {
+
+    console.error(
+      "Food photo error:",
+      error
+    );
+
+
+    hooks.showMessage(
+
+      "照片處理失敗：" +
+      (
+        error?.message ||
+        error
+      ),
+
+      "error"
+
+    );
+
+  }
+  finally {
+
+    const input =
+      getElement(
+        "foodPhotoInput"
+      );
+
+
+    if (
+      input
+    ) {
+
+      input.disabled =
+        false;
+
+    }
+
+  }
+
+}
+
+
+/* =========================================================
+   REMOVE PHOTO
+========================================================= */
+
+async function removeFoodPhoto() {
+
+  if (
+    !currentFoodPhoto
+  ) {
+
+    return;
+
+  }
+
+
+  const confirmed =
+    await hooks.confirmDialog(
+
+      "移除照片",
+
+      "確定要移除目前這張美食照片嗎？"
+
+    );
+
+
+  if (
+    !confirmed
+  ) {
+
+    return;
+
+  }
+
+
+  currentFoodPhoto =
+    null;
+
+
+  removeFoodPhotoRequested =
+    true;
+
+
+  const input =
+    getElement(
+      "foodPhotoInput"
+    );
+
+
+  if (
+    input
+  ) {
+
+    input.value =
+      "";
+
+  }
+
+
+  renderFoodPhotoPreview();
+
+
+  hooks.showToast(
+    "🗑️ 照片已移除"
+  );
+
+}
+
+
+/* =========================================================
+   FOOD EDIT INDICATOR
+========================================================= */
+
+function setFoodEditMode(
+  enabled
+) {
+
+  const indicator =
+    getElement(
+      "foodEditIndicator"
+    );
+
+
+  const saveButton =
+    getElement(
+      "saveFoodButton"
+    );
+
+
+  const cancelButton =
+    getElement(
+      "cancelFoodEditButton"
+    );
+
+
+  if (
+    indicator
+  ) {
+
+    indicator.style.display =
+
+      enabled
+
+        ? "block"
+
+        : "none";
+
+  }
+
+
+  if (
+    saveButton
+  ) {
+
+    saveButton.textContent =
+
+      enabled
+
+        ? "💾 儲存修改"
+
+        : "🍜 儲存美食";
+
+  }
+
+
+  if (
+    cancelButton
+  ) {
+
+    cancelButton.style.display =
+
+      enabled
+
+        ? "block"
+
+        : "none";
+
+  }
+
+}
+
+
+/* =========================================================
    RESET FORM
 ========================================================= */
 
 export function resetFoodForm() {
+
+  /* =====================================================
+     Editing
+  ===================================================== */
 
   const editingUid =
     getElement(
@@ -717,6 +2292,15 @@ export function resetFoodForm() {
 
   }
 
+
+  setFoodEditMode(
+    false
+  );
+
+
+  /* =====================================================
+     Date / Time
+  ===================================================== */
 
   const date =
     getElement(
@@ -750,17 +2334,20 @@ export function resetFoodForm() {
   }
 
 
-  const fields = [
+  renderFoodTimezone();
 
+
+  /* =====================================================
+     Text
+  ===================================================== */
+
+  [
     "foodShopName",
     "foodName",
     "foodAmount",
     "foodNote"
-
-  ];
-
-
-  fields.forEach(
+  ]
+  .forEach(
     id => {
 
       const element =
@@ -781,6 +2368,19 @@ export function resetFoodForm() {
     }
   );
 
+
+  /* =====================================================
+     Trip
+
+     這裡不強制把旅程切回空值，
+     保留使用者目前選擇的旅程，
+     方便旅行途中連續新增美食。
+  ===================================================== */
+
+
+  /* =====================================================
+     Meal / Category
+  ===================================================== */
 
   const meal =
     getElement(
@@ -814,6 +2414,10 @@ export function resetFoodForm() {
   }
 
 
+  /* =====================================================
+     Currency
+  ===================================================== */
+
   const currency =
     getElement(
       "foodCurrency"
@@ -829,6 +2433,10 @@ export function resetFoodForm() {
 
   }
 
+
+  /* =====================================================
+     Recommended
+  ===================================================== */
 
   const recommended =
     getElement(
@@ -846,6 +2454,10 @@ export function resetFoodForm() {
   }
 
 
+  /* =====================================================
+     Food → Expense
+  ===================================================== */
+
   const syncExpense =
     getElement(
       "foodSyncExpense"
@@ -860,6 +2472,29 @@ export function resetFoodForm() {
       false;
 
   }
+
+
+  /* =====================================================
+     Rating
+  ===================================================== */
+
+  foodRating =
+    0;
+
+
+  renderFoodRating();
+
+
+  /* =====================================================
+     GPS
+  ===================================================== */
+
+  foodLocation =
+    null;
+
+
+  foodAddressDetails =
+    null;
 
 
   const gpsStatus =
@@ -878,54 +2513,112 @@ export function resetFoodForm() {
   }
 
 
-  foodLocation =
-    null;
-
-
-  foodAddressDetails =
-    null;
-
-
-  foodRating =
-    0;
-
-
-  renderFoodRating();
-
-
-  const saveButton =
+  const gpsButton =
     getElement(
-      "saveFoodButton"
+      "foodGpsButton"
     );
 
 
   if (
-    saveButton
+    gpsButton
   ) {
 
-    saveButton.textContent =
-      "🍜 儲存美食";
+    gpsButton.textContent =
+      "📍 取得目前位置＋搜尋附近店家";
 
   }
 
 
-  const cancelButton =
+  /* =====================================================
+     Nearby
+  ===================================================== */
+
+  foodNearbyPlaces =
+    [];
+
+
+  const nearbyWrap =
     getElement(
-      "cancelFoodEditButton"
+      "foodNearbyWrap"
     );
 
 
   if (
-    cancelButton
+    nearbyWrap
   ) {
 
-    cancelButton.style.display =
+    nearbyWrap.style.display =
       "none";
 
   }
 
-}
 
+  const nearbyList =
+    getElement(
+      "foodNearbyList"
+    );
+
+
+  if (
+    nearbyList
+  ) {
+
+    nearbyList.innerHTML =
+      "";
+
+  }
+
+
+  const selectedShop =
+    getElement(
+      "foodSelectedShop"
+    );
+
+
+  if (
+    selectedShop
+  ) {
+
+    selectedShop.textContent =
+      "";
+
+    selectedShop.style.display =
+      "none";
+
+  }
+
+
+  /* =====================================================
+     PHOTO
+  ===================================================== */
+
+  currentFoodPhoto =
+    null;
+
+
+  removeFoodPhotoRequested =
+    false;
+
+
+  const photoInput =
+    getElement(
+      "foodPhotoInput"
+    );
+
+
+  if (
+    photoInput
+  ) {
+
+    photoInput.value =
+      "";
+
+  }
+
+
+  renderFoodPhotoPreview();
+
+}
 
 /* =========================================================
    FIND LINKED EXPENSE
@@ -1063,7 +2756,8 @@ async function saveFood() {
 
 
   if (
-    amount !== null &&
+    amount !==
+      null &&
     Number.isNaN(
       amount
     )
@@ -1086,6 +2780,61 @@ async function saveFood() {
     )
     ?.value ||
     null;
+
+
+  /* =====================================================
+     PHOTO DECISION
+
+     新增：
+       currentFoodPhoto 有值 → 存照片
+       沒照片 → null
+
+     編輯：
+       選新照片 → 使用新照片
+       主動移除 → null
+       都沒做 → 保留 old.photo_local
+  ===================================================== */
+
+  let photoLocal =
+    null;
+
+
+  if (
+    editingUid
+  ) {
+
+    if (
+      removeFoodPhotoRequested
+    ) {
+
+      photoLocal =
+        null;
+
+    }
+    else if (
+      currentFoodPhoto
+    ) {
+
+      photoLocal =
+        currentFoodPhoto;
+
+    }
+    else {
+
+      photoLocal =
+        old?.photo_local ||
+        null;
+
+    }
+
+  }
+  else {
+
+    photoLocal =
+      currentFoodPhoto ||
+      null;
+
+  }
 
 
   const foodRecord = {
@@ -1141,7 +2890,9 @@ async function saveFood() {
         "foodRecommended"
       )
       ?.checked
+
         ? 1
+
         : 0,
 
     rating:
@@ -1181,6 +2932,15 @@ async function saveFood() {
       old?.address_details ??
       null,
 
+    /*
+      Local-only photo.
+    */
+    photo_local:
+      photoLocal,
+
+    /*
+      Reserved for future R2.
+    */
     photo_url:
       old?.photo_url ||
       null,
@@ -1199,9 +2959,9 @@ async function saveFood() {
   };
 
 
-  /*
-    先存 Food Local。
-  */
+  /* =====================================================
+     SAVE FOOD LOCAL + SYNC
+  ===================================================== */
 
   await saveAndSync(
     "food_records",
@@ -1230,7 +2990,8 @@ async function saveFood() {
 
   if (
     shouldCreateExpense &&
-    amount !== null
+    amount !==
+      null
   ) {
 
     const expenseRecord = {
@@ -1309,9 +3070,9 @@ async function saveFood() {
   ) {
 
     /*
-      原本有連動消費，
-      後來取消勾選，
-      則 soft-delete 該 Expense。
+      原本有 Food → Expense，
+      後來取消勾選時，
+      soft-delete linked expense。
     */
 
     await deleteAndSync(
@@ -1376,11 +3137,13 @@ export function editFood(
 
     date.getFullYear() +
     "-" +
+
     pad(
       date.getMonth() +
       1
     ) +
     "-" +
+
     pad(
       date.getDate()
     );
@@ -1392,10 +3155,15 @@ export function editFood(
       date.getHours()
     ) +
     ":" +
+
     pad(
       date.getMinutes()
     );
 
+
+  /* =====================================================
+     BASIC FIELDS
+  ===================================================== */
 
   getElement(
     "foodEditingUid"
@@ -1481,6 +3249,10 @@ export function editFood(
     "";
 
 
+  /* =====================================================
+     RATING
+  ===================================================== */
+
   foodRating =
     Number(
       record.rating
@@ -1490,6 +3262,10 @@ export function editFood(
 
   renderFoodRating();
 
+
+  /* =====================================================
+     GPS
+  ===================================================== */
 
   if (
     record.latitude !==
@@ -1578,8 +3354,83 @@ export function editFood(
     foodAddressDetails =
       null;
 
+
+    const gpsStatus =
+      getElement(
+        "foodGpsStatus"
+      );
+
+
+    if (
+      gpsStatus
+    ) {
+
+      gpsStatus.textContent =
+        "尚未取得位置";
+
+    }
+
   }
 
+
+  /* =====================================================
+     PHOTO
+  ===================================================== */
+
+  currentFoodPhoto =
+    record.photo_local ||
+    null;
+
+
+  removeFoodPhotoRequested =
+    false;
+
+
+  const photoInput =
+    getElement(
+      "foodPhotoInput"
+    );
+
+
+  if (
+    photoInput
+  ) {
+
+    photoInput.value =
+      "";
+
+  }
+
+
+  renderFoodPhotoPreview();
+
+
+  /* =====================================================
+     SELECTED SHOP NOTE
+  ===================================================== */
+
+  const selectedShop =
+    getElement(
+      "foodSelectedShop"
+    );
+
+
+  if (
+    selectedShop
+  ) {
+
+    selectedShop.textContent =
+      "";
+
+    selectedShop.style.display =
+      "none";
+
+  }
+
+
+  /* =====================================================
+     FOOD → EXPENSE
+  ===================================================== */
 
   const linkedExpense =
     getLinkedExpense(
@@ -1605,36 +3456,16 @@ export function editFood(
   }
 
 
-  const saveButton =
-    getElement(
-      "saveFoodButton"
-    );
+  /* =====================================================
+     EDIT UI
+  ===================================================== */
+
+  setFoodEditMode(
+    true
+  );
 
 
-  if (
-    saveButton
-  ) {
-
-    saveButton.textContent =
-      "💾 儲存修改";
-
-  }
-
-
-  const cancelButton =
-    getElement(
-      "cancelFoodEditButton"
-    );
-
-
-  if (
-    cancelButton
-  ) {
-
-    cancelButton.style.display =
-      "block";
-
-  }
+  renderFoodTimezone();
 
 
   window.scrollTo(
@@ -1684,6 +3515,13 @@ export async function deleteFood(
       (
         record.shop_name ||
         ""
+      ) +
+      (
+        record.photo_local
+
+          ? "\n\n📷 此筆紀錄包含本機照片，照片也會一起刪除。"
+
+          : ""
       )
 
     );
@@ -1699,7 +3537,10 @@ export async function deleteFood(
 
 
   /*
-    先刪 Food。
+    Food 本身使用既有 soft-delete / sync engine。
+
+    photo_local 會跟著 tombstone Local record 保留，
+    等後續資料清理策略再決定是否實體移除。
   */
 
   await deleteAndSync(
@@ -1709,8 +3550,7 @@ export async function deleteFood(
 
 
   /*
-    若有 linked expense，
-    一起 soft delete。
+    linked Expense 一起 soft-delete。
   */
 
   const linkedExpense =
@@ -1740,7 +3580,6 @@ export async function deleteFood(
 
 }
 
-
 /* =========================================================
    SEARCH
 ========================================================= */
@@ -1763,6 +3602,218 @@ function getFoodSearchKeyword() {
 }
 
 
+/* =========================================================
+   FILTER STATE
+========================================================= */
+
+function updateFoodFilterUI() {
+
+  document
+    .querySelectorAll(
+      '[data-food-filter-type="meal"]'
+    )
+    .forEach(
+      button => {
+
+        button.classList.toggle(
+
+          "active",
+
+          button.dataset.foodFilterValue ===
+            selectedFoodMealFilter
+
+        );
+
+      }
+    );
+
+
+  document
+    .querySelectorAll(
+      '[data-food-filter-type="category"]'
+    )
+    .forEach(
+      button => {
+
+        button.classList.toggle(
+
+          "active",
+
+          button.dataset.foodFilterValue ===
+            selectedFoodCategoryFilter
+
+        );
+
+      }
+    );
+
+
+  const recommendButton =
+    getElement(
+      "foodRecommendFilterButton"
+    );
+
+
+  if (
+    recommendButton
+  ) {
+
+    recommendButton.classList.toggle(
+      "active",
+      foodRecommendedOnly
+    );
+
+  }
+
+
+  const panel =
+    getElement(
+      "foodFilterPanel"
+    );
+
+
+  const toggle =
+    getElement(
+      "foodFilterToggleButton"
+    );
+
+
+  if (
+    panel
+  ) {
+
+    panel.classList.toggle(
+      "open",
+      foodFilterPanelOpen
+    );
+
+  }
+
+
+  if (
+    toggle
+  ) {
+
+    toggle.classList.toggle(
+      "open",
+      foodFilterPanelOpen
+    );
+
+
+    toggle.textContent =
+
+      foodFilterPanelOpen
+
+        ? "▲ 收合篩選"
+
+        : "☰ 展開篩選";
+
+  }
+
+
+  const activeDescriptions =
+    [];
+
+
+  const keyword =
+    getFoodSearchKeyword();
+
+
+  if (
+    keyword
+  ) {
+
+    activeDescriptions.push(
+      `搜尋：${keyword}`
+    );
+
+  }
+
+
+  if (
+    selectedFoodMealFilter
+  ) {
+
+    activeDescriptions.push(
+      `餐別：${selectedFoodMealFilter}`
+    );
+
+  }
+
+
+  if (
+    selectedFoodCategoryFilter
+  ) {
+
+    activeDescriptions.push(
+      `分類：${selectedFoodCategoryFilter}`
+    );
+
+  }
+
+
+  if (
+    foodRecommendedOnly
+  ) {
+
+    activeDescriptions.push(
+      "只看推薦"
+    );
+
+  }
+
+
+  const status =
+    getElement(
+      "foodFilterStatus"
+    );
+
+
+  if (
+    status
+  ) {
+
+    status.textContent =
+
+      activeDescriptions.length
+
+        ? activeDescriptions.join(
+            " · "
+          )
+
+        : "目前沒有啟用篩選";
+
+  }
+
+
+  const clearButton =
+    getElement(
+      "foodClearFilterButton"
+    );
+
+
+  if (
+    clearButton
+  ) {
+
+    clearButton.classList.toggle(
+
+      "show",
+
+      activeDescriptions.length >
+        0
+
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   DISPLAY RECORDS
+========================================================= */
+
 function getDisplayFoodRecords() {
 
   const keyword =
@@ -1773,6 +3824,49 @@ function getDisplayFoodRecords() {
 
     .filter(
       record => {
+
+        if (
+          record.deleted_at
+        ) {
+
+          return false;
+
+        }
+
+
+        if (
+          selectedFoodMealFilter &&
+          record.meal_type !==
+            selectedFoodMealFilter
+        ) {
+
+          return false;
+
+        }
+
+
+        if (
+          selectedFoodCategoryFilter &&
+          record.food_category !==
+            selectedFoodCategoryFilter
+        ) {
+
+          return false;
+
+        }
+
+
+        if (
+          foodRecommendedOnly &&
+          !Number(
+            record.recommended
+          )
+        ) {
+
+          return false;
+
+        }
+
 
         if (
           !keyword
@@ -1796,6 +3890,12 @@ function getDisplayFoodRecords() {
           record.address,
 
           record.note,
+
+          Number(
+            record.recommended
+          )
+            ? "推薦 值得再訪"
+            : "",
 
           getTripName(
             record.trip_client_uid
@@ -1875,21 +3975,114 @@ function formatRecordedAt(
 
     date.getFullYear() +
     "/" +
+
     pad(
       date.getMonth() +
       1
     ) +
     "/" +
+
     pad(
       date.getDate()
     ) +
     " " +
+
     pad(
       date.getHours()
     ) +
     ":" +
+
     pad(
       date.getMinutes()
+    )
+
+  );
+
+}
+
+
+function formatFoodDate(
+  value
+) {
+
+  if (
+    !value
+  ) {
+
+    return "未知日期";
+
+  }
+
+
+  const date =
+    new Date(
+      value
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return "未知日期";
+
+  }
+
+
+  return getLocalDate(
+    date
+  );
+
+}
+
+
+function formatFoodDateTitle(
+  dateKey
+) {
+
+  if (
+    !dateKey ||
+    dateKey ===
+      "unknown"
+  ) {
+
+    return "未知日期";
+
+  }
+
+
+  const date =
+    new Date(
+      `${dateKey}T00:00:00`
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return dateKey;
+
+  }
+
+
+  return (
+
+    date.getFullYear() +
+    " / " +
+
+    pad(
+      date.getMonth() +
+      1
+    ) +
+    " / " +
+
+    pad(
+      date.getDate()
     )
 
   );
@@ -1915,19 +4108,132 @@ function formatMoney(
   }
 
 
-  return (
-
-    escapeHtml(
-      record.currency ||
-      ""
-    ) +
-
-    " " +
-
+  const amount =
     Number(
       record.amount
-    )
-    .toLocaleString()
+    );
+
+
+  const currency =
+    record.currency ||
+    "";
+
+
+  if (
+    currency ===
+    "TWD"
+  ) {
+
+    return (
+
+      "NT$" +
+
+      amount.toLocaleString(
+        "zh-TW",
+        {
+          maximumFractionDigits:
+            2
+        }
+      )
+
+    );
+
+  }
+
+
+  if (
+    currency ===
+    "JPY"
+  ) {
+
+    return (
+
+      "¥" +
+
+      amount.toLocaleString(
+        "ja-JP",
+        {
+          maximumFractionDigits:
+            0
+        }
+      )
+
+    );
+
+  }
+
+
+  if (
+    currency ===
+    "CNY"
+  ) {
+
+    return (
+
+      "CN¥" +
+
+      amount.toLocaleString(
+        "zh-CN",
+        {
+          maximumFractionDigits:
+            2
+        }
+      )
+
+    );
+
+  }
+
+
+  if (
+    currency ===
+    "USD"
+  ) {
+
+    return (
+
+      "US$" +
+
+      amount.toLocaleString(
+        "en-US",
+        {
+          maximumFractionDigits:
+            2
+        }
+      )
+
+    );
+
+  }
+
+
+  if (
+    currency ===
+    "KRW"
+  ) {
+
+    return (
+
+      "₩" +
+
+      amount.toLocaleString(
+        "ko-KR",
+        {
+          maximumFractionDigits:
+            0
+        }
+      )
+
+    );
+
+  }
+
+
+  return (
+
+    currency +
+    " " +
+    amount.toLocaleString()
 
   );
 
@@ -1989,6 +4295,748 @@ function syncBadgeHtml(
 
 
 /* =========================================================
+   SUMMARY
+========================================================= */
+
+function renderFoodSummary(
+  records
+) {
+
+  const activeRecords =
+    records.filter(
+      record =>
+        !record.deleted_at
+    );
+
+
+  const count =
+    activeRecords.length;
+
+
+  const ratingRecords =
+    activeRecords.filter(
+      record =>
+        Number(
+          record.rating
+        ) >
+        0
+    );
+
+
+  const averageRating =
+
+    ratingRecords.length
+
+      ? ratingRecords.reduce(
+          (
+            sum,
+            record
+          ) =>
+            sum +
+            Number(
+              record.rating
+            ),
+          0
+        ) /
+        ratingRecords.length
+
+      : null;
+
+
+  const twdTotal =
+    activeRecords.reduce(
+      (
+        sum,
+        record
+      ) => {
+
+        if (
+          record.currency !==
+            "TWD" ||
+          record.amount ===
+            null ||
+          record.amount ===
+            undefined
+        ) {
+
+          return sum;
+
+        }
+
+
+        return (
+          sum +
+          Number(
+            record.amount
+          )
+        );
+
+      },
+      0
+    );
+
+
+  const jpyTotal =
+    activeRecords.reduce(
+      (
+        sum,
+        record
+      ) => {
+
+        if (
+          record.currency !==
+            "JPY" ||
+          record.amount ===
+            null ||
+          record.amount ===
+            undefined
+        ) {
+
+          return sum;
+
+        }
+
+
+        return (
+          sum +
+          Number(
+            record.amount
+          )
+        );
+
+      },
+      0
+    );
+
+
+  const countElement =
+    getElement(
+      "foodSummaryCount"
+    );
+
+
+  if (
+    countElement
+  ) {
+
+    countElement.textContent =
+      String(
+        count
+      );
+
+  }
+
+
+  const ratingElement =
+    getElement(
+      "foodSummaryRating"
+    );
+
+
+  if (
+    ratingElement
+  ) {
+
+    ratingElement.textContent =
+
+      averageRating ===
+        null
+
+        ? "-"
+
+        : `${averageRating.toFixed(1)} ★`;
+
+  }
+
+
+  const twdElement =
+    getElement(
+      "foodSummaryTWD"
+    );
+
+
+  if (
+    twdElement
+  ) {
+
+    twdElement.textContent =
+
+      "NT$" +
+
+      twdTotal.toLocaleString(
+        "zh-TW",
+        {
+          maximumFractionDigits:
+            2
+        }
+      );
+
+  }
+
+
+  const jpyElement =
+    getElement(
+      "foodSummaryJPY"
+    );
+
+
+  if (
+    jpyElement
+  ) {
+
+    jpyElement.textContent =
+
+      "¥" +
+
+      jpyTotal.toLocaleString(
+        "ja-JP",
+        {
+          maximumFractionDigits:
+            0
+        }
+      );
+
+  }
+
+}
+
+
+/* =========================================================
+   SEARCH RESULT INFO
+========================================================= */
+
+function renderFoodSearchResultInfo(
+  visibleCount,
+  totalCount
+) {
+
+  const element =
+    getElement(
+      "foodSearchResultInfo"
+    );
+
+
+  if (
+    !element
+  ) {
+
+    return;
+
+  }
+
+
+  const hasFilter =
+
+    Boolean(
+      getFoodSearchKeyword()
+    ) ||
+
+    Boolean(
+      selectedFoodMealFilter
+    ) ||
+
+    Boolean(
+      selectedFoodCategoryFilter
+    ) ||
+
+    foodRecommendedOnly;
+
+
+  if (
+    hasFilter
+  ) {
+
+    element.textContent =
+
+      `找到 ${visibleCount} 筆，共 ${totalCount} 筆美食紀錄`;
+
+  }
+  else {
+
+    element.textContent =
+
+      totalCount
+
+        ? `顯示全部 ${totalCount} 筆紀錄`
+
+        : "目前沒有美食紀錄";
+
+  }
+
+}
+
+
+/* =========================================================
+   DATE GROUP
+========================================================= */
+
+function groupFoodRecordsByDate(
+  records
+) {
+
+  const groups =
+    new Map();
+
+
+  records.forEach(
+    record => {
+
+      const key =
+        formatFoodDate(
+          record.recorded_at
+        ) ||
+        "unknown";
+
+
+      if (
+        !groups.has(
+          key
+        )
+      ) {
+
+        groups.set(
+          key,
+          []
+        );
+
+      }
+
+
+      groups.get(
+        key
+      )
+      .push(
+        record
+      );
+
+    }
+  );
+
+
+  return groups;
+
+}
+
+
+/* =========================================================
+   DAILY SUMMARY
+========================================================= */
+
+function buildFoodDailySummary(
+  records
+) {
+
+  const count =
+    records.length;
+
+
+  const recommendedCount =
+    records.filter(
+      record =>
+        Number(
+          record.recommended
+        )
+    ).length;
+
+
+  const ratingRecords =
+    records.filter(
+      record =>
+        Number(
+          record.rating
+        ) >
+        0
+    );
+
+
+  const average =
+
+    ratingRecords.length
+
+      ? ratingRecords.reduce(
+          (
+            sum,
+            record
+          ) =>
+            sum +
+            Number(
+              record.rating
+            ),
+          0
+        ) /
+        ratingRecords.length
+
+      : null;
+
+
+  const parts = [
+
+    `${count} 筆`
+
+  ];
+
+
+  if (
+    average !==
+      null
+  ) {
+
+    parts.push(
+      `平均 ${average.toFixed(1)}★`
+    );
+
+  }
+
+
+  if (
+    recommendedCount
+  ) {
+
+    parts.push(
+      `推薦 ${recommendedCount}`
+    );
+
+  }
+
+
+  return parts.join(
+    " · "
+  );
+
+}
+
+
+/* =========================================================
+   RECORD CARD
+========================================================= */
+
+function foodRecordCardHtml(
+  record
+) {
+
+  const ratingValue =
+    Math.max(
+      0,
+      Math.min(
+        5,
+        Number(
+          record.rating
+        ) ||
+        0
+      )
+    );
+
+
+  const stars =
+
+    ratingValue
+
+      ? "★".repeat(
+          ratingValue
+        ) +
+        "☆".repeat(
+          5 -
+          ratingValue
+        )
+
+      : "";
+
+
+  const tags =
+    [];
+
+
+  if (
+    record.meal_type
+  ) {
+
+    tags.push(
+      `
+        <span class="food-record-tag">
+          ${escapeHtml(
+            record.meal_type
+          )}
+        </span>
+      `
+    );
+
+  }
+
+
+  if (
+    record.food_category
+  ) {
+
+    tags.push(
+      `
+        <span class="food-record-tag">
+          ${escapeHtml(
+            record.food_category
+          )}
+        </span>
+      `
+    );
+
+  }
+
+
+  if (
+    Number(
+      record.recommended
+    )
+  ) {
+
+    tags.push(
+      `
+        <span class="food-record-tag recommended">
+          ⭐ 推薦 / 值得再訪
+        </span>
+      `
+    );
+
+  }
+
+
+  return `
+
+    <div
+      class="record"
+      data-food-uid="${escapeHtml(
+        record.client_uid
+      )}"
+    >
+
+      <div class="food-record-store">
+
+        🍜
+
+        ${escapeHtml(
+          record.shop_name ||
+          "未命名店家"
+        )}
+
+        ${syncBadgeHtml(
+          record.sync_status
+        )}
+
+      </div>
+
+
+      ${
+        record.food_name
+
+          ? `
+
+            <div class="food-record-food">
+
+              🍽️
+              ${escapeHtml(
+                record.food_name
+              )}
+
+            </div>
+
+          `
+
+          : ""
+      }
+
+
+      ${
+        record.photo_local
+
+          ? `
+
+            <img
+              class="food-record-photo"
+              src="${record.photo_local}"
+              alt="${escapeHtml(
+                record.shop_name ||
+                "美食照片"
+              )}"
+              loading="lazy"
+            >
+
+          `
+
+          : (
+              record.photo_url
+
+                ? `
+
+                  <img
+                    class="food-record-photo"
+                    src="${escapeHtml(
+                      record.photo_url
+                    )}"
+                    alt="${escapeHtml(
+                      record.shop_name ||
+                      "美食照片"
+                    )}"
+                    loading="lazy"
+                  >
+
+                `
+
+                : ""
+            )
+      }
+
+
+      ${
+        stars
+
+          ? `
+
+            <div class="food-record-stars">
+              ${stars}
+            </div>
+
+          `
+
+          : ""
+      }
+
+
+      ${
+        tags.length
+
+          ? `
+
+            <div class="food-record-tags">
+
+              ${tags.join(
+                ""
+              )}
+
+            </div>
+
+          `
+
+          : ""
+      }
+
+
+      <div class="record-meta">
+
+        🧳
+        ${escapeHtml(
+          getTripName(
+            record.trip_client_uid
+          )
+        )}
+
+        <br>
+
+        🕒
+        ${escapeHtml(
+          formatRecordedAt(
+            record.recorded_at
+          )
+        )}
+
+      </div>
+
+
+      ${
+        record.amount !==
+          null &&
+        record.amount !==
+          undefined
+
+          ? `
+
+            <div class="food-record-money">
+
+              💰
+              ${escapeHtml(
+                formatMoney(
+                  record
+                )
+              )}
+
+            </div>
+
+          `
+
+          : ""
+      }
+
+
+      ${
+        record.address
+
+          ? `
+
+            <div class="food-record-address">
+
+              📍
+              ${escapeHtml(
+                record.address
+              )}
+
+            </div>
+
+          `
+
+          : ""
+      }
+
+
+      ${
+        record.note
+
+          ? `
+
+            <div class="record-note">
+
+              ${escapeHtml(
+                record.note
+              )}
+
+            </div>
+
+          `
+
+          : ""
+      }
+
+
+      <div class="record-actions">
+
+        <button
+          type="button"
+          class="btn-gray"
+          data-action="edit-food"
+          data-client-uid="${escapeHtml(
+            record.client_uid
+          )}"
+        >
+          ✏️ 編輯
+        </button>
+
+
+        <button
+          type="button"
+          class="btn-soft-red"
+          data-action="delete-food"
+          data-client-uid="${escapeHtml(
+            record.client_uid
+          )}"
+        >
+          🗑️ 刪除
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+/* =========================================================
    RENDER FOOD
 ========================================================= */
 
@@ -2009,8 +5057,38 @@ export function renderFoodRecords() {
   }
 
 
+  /*
+    Summary 使用全部非刪除紀錄，
+    不隨搜尋 / filter 改變。
+
+    這樣與單機版「整體美食統計」概念一致。
+  */
+
+  const allActiveRecords =
+    foodRecords.filter(
+      record =>
+        !record.deleted_at
+    );
+
+
+  renderFoodSummary(
+    allActiveRecords
+  );
+
+
+  updateFoodFilterUI();
+
+
   const records =
     getDisplayFoodRecords();
+
+
+  renderFoodSearchResultInfo(
+
+    records.length,
+    allActiveRecords.length
+
+  );
 
 
   if (
@@ -2020,7 +5098,15 @@ export function renderFoodRecords() {
     container.innerHTML = `
 
       <div class="empty">
-        尚無美食紀錄
+
+        ${
+          allActiveRecords.length
+
+            ? "沒有符合搜尋或篩選條件的美食紀錄"
+
+            : "尚無美食紀錄"
+        }
+
       </div>
 
     `;
@@ -2030,252 +5116,97 @@ export function renderFoodRecords() {
   }
 
 
+  const groups =
+    groupFoodRecordsByDate(
+      records
+    );
+
+
   container.innerHTML =
-    records
+
+    Array
+      .from(
+        groups.entries()
+      )
       .map(
-        record => {
+        (
+          [
+            dateKey,
+            groupRecords
+          ]
+        ) => {
 
-          const stars =
-
-            Number(
-              record.rating
-            ) >
-            0
-
-              ? "★".repeat(
-                  Number(
-                    record.rating
-                  )
-                ) +
-
-                "☆".repeat(
-                  5 -
-                  Number(
-                    record.rating
-                  )
-                )
-
-              : "";
+          const collapsed =
+            collapsedFoodDates.has(
+              dateKey
+            );
 
 
           return `
 
             <div
-              class="record"
-              data-food-uid="${escapeHtml(
-                record.client_uid
+              class="food-date-group ${
+                collapsed
+                  ? "collapsed"
+                  : ""
+              }"
+              data-food-date="${escapeHtml(
+                dateKey
               )}"
             >
 
-              <div class="record-title">
+              <button
+                type="button"
+                class="food-date-header"
+                data-action="toggle-food-date"
+                data-date="${escapeHtml(
+                  dateKey
+                )}"
+              >
 
-                🍜
+                <div>
 
-                ${escapeHtml(
-                  record.shop_name ||
-                  "未命名店家"
-                )}
+                  <div class="food-date-title">
 
-                ${syncBadgeHtml(
-                  record.sync_status
-                )}
-
-              </div>
-
-
-              ${
-                record.food_name
-
-                  ? `
-
-                    <div
-                      style="
-                        font-size:17px;
-                        font-weight:600;
-                        margin-top:6px;
-                      "
-                    >
-
-                      🍽️
-                      ${escapeHtml(
-                        record.food_name
-                      )}
-
-                    </div>
-
-                  `
-
-                  : ""
-              }
-
-
-              ${
-                stars
-
-                  ? `
-
-                    <div
-                      style="
-                        margin-top:7px;
-                        font-size:18px;
-                      "
-                    >
-
-                      ${stars}
-
-                    </div>
-
-                  `
-
-                  : ""
-              }
-
-
-              <div class="record-meta">
-
-                🧳
-                ${escapeHtml(
-                  getTripName(
-                    record.trip_client_uid
-                  )
-                )}
-
-                <br>
-
-                🕒
-                ${escapeHtml(
-                  formatRecordedAt(
-                    record.recorded_at
-                  )
-                )}
-
-                ${
-                  record.meal_type
-
-                    ? "<br>🍴 " +
-                      escapeHtml(
-                        record.meal_type
+                    📅
+                    ${escapeHtml(
+                      formatFoodDateTitle(
+                        dateKey
                       )
+                    )}
 
-                    : ""
-                }
+                  </div>
 
-                ${
-                  record.food_category
 
-                    ? "　📂 " +
-                      escapeHtml(
-                        record.food_category
+                  <div class="food-date-summary">
+
+                    ${escapeHtml(
+                      buildFoodDailySummary(
+                        groupRecords
                       )
+                    )}
 
-                    : ""
-                }
+                  </div>
 
-                ${
-                  Number(
-                    record.recommended
+                </div>
+
+
+                <div class="food-date-toggle">
+                  ▼
+                </div>
+
+              </button>
+
+
+              <div class="food-date-records">
+
+                ${groupRecords
+                  .map(
+                    foodRecordCardHtml
                   )
-
-                    ? "<br>👍 推薦"
-
-                    : ""
-                }
-
-              </div>
-
-
-              ${
-                record.amount !==
-                  null &&
-                record.amount !==
-                  undefined
-
-                  ? `
-
-                    <div
-                      style="
-                        margin-top:8px;
-                        font-weight:700;
-                        font-size:17px;
-                      "
-                    >
-
-                      💰
-                      ${formatMoney(
-                        record
-                      )}
-
-                    </div>
-
-                  `
-
-                  : ""
-              }
-
-
-              ${
-                record.address
-
-                  ? `
-
-                    <div class="record-meta">
-
-                      📍
-                      ${escapeHtml(
-                        record.address
-                      )}
-
-                    </div>
-
-                  `
-
-                  : ""
-              }
-
-
-              ${
-                record.note
-
-                  ? `
-
-                    <div class="record-note">
-
-                      ${escapeHtml(
-                        record.note
-                      )}
-
-                    </div>
-
-                  `
-
-                  : ""
-              }
-
-
-              <div class="record-actions">
-
-                <button
-                  type="button"
-                  class="btn-gray"
-                  data-action="edit-food"
-                  data-client-uid="${escapeHtml(
-                    record.client_uid
-                  )}"
-                >
-                  ✏️ 編輯
-                </button>
-
-
-                <button
-                  type="button"
-                  class="btn-soft-red"
-                  data-action="delete-food"
-                  data-client-uid="${escapeHtml(
-                    record.client_uid
-                  )}"
-                >
-                  🗑️ 刪除
-                </button>
+                  .join(
+                    ""
+                  )}
 
               </div>
 
@@ -2288,6 +5219,157 @@ export function renderFoodRecords() {
       .join(
         ""
       );
+
+}
+
+/* =========================================================
+   FILTER ACTIONS
+========================================================= */
+
+function toggleFoodFilterPanel() {
+
+  foodFilterPanelOpen =
+    !foodFilterPanelOpen;
+
+
+  updateFoodFilterUI();
+
+}
+
+
+/* =========================================================
+   SET MEAL FILTER
+========================================================= */
+
+function setFoodMealFilter(
+  value
+) {
+
+  selectedFoodMealFilter =
+    value ||
+    "";
+
+
+  renderFoodRecords();
+
+}
+
+
+/* =========================================================
+   SET CATEGORY FILTER
+========================================================= */
+
+function setFoodCategoryFilter(
+  value
+) {
+
+  selectedFoodCategoryFilter =
+    value ||
+    "";
+
+
+  renderFoodRecords();
+
+}
+
+
+/* =========================================================
+   TOGGLE RECOMMENDED FILTER
+========================================================= */
+
+function toggleFoodRecommendedFilter() {
+
+  foodRecommendedOnly =
+    !foodRecommendedOnly;
+
+
+  renderFoodRecords();
+
+}
+
+
+/* =========================================================
+   CLEAR FILTERS
+========================================================= */
+
+function clearFoodFilters() {
+
+  selectedFoodMealFilter =
+    "";
+
+
+  selectedFoodCategoryFilter =
+    "";
+
+
+  foodRecommendedOnly =
+    false;
+
+
+  const search =
+    getElement(
+      "foodSearch"
+    );
+
+
+  if (
+    search
+  ) {
+
+    search.value =
+      "";
+
+  }
+
+
+  renderFoodRecords();
+
+
+  hooks.showToast(
+    "🔎 已清除美食搜尋與篩選"
+  );
+
+}
+
+
+/* =========================================================
+   DATE COLLAPSE
+========================================================= */
+
+function toggleFoodDate(
+  dateKey
+) {
+
+  if (
+    !dateKey
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    collapsedFoodDates.has(
+      dateKey
+    )
+  ) {
+
+    collapsedFoodDates.delete(
+      dateKey
+    );
+
+  }
+  else {
+
+    collapsedFoodDates.add(
+      dateKey
+    );
+
+  }
+
+
+  renderFoodRecords();
 
 }
 
@@ -2315,6 +5397,10 @@ function bindFoodEvents() {
     true;
 
 
+  /* =====================================================
+     GPS
+  ===================================================== */
+
   getElement(
     "foodGpsButton"
   )
@@ -2323,6 +5409,10 @@ function bindFoodEvents() {
     getFoodGPS
   );
 
+
+  /* =====================================================
+     SAVE
+  ===================================================== */
 
   getElement(
     "saveFoodButton"
@@ -2333,14 +5423,30 @@ function bindFoodEvents() {
   );
 
 
+  /* =====================================================
+     CANCEL EDIT
+  ===================================================== */
+
   getElement(
     "cancelFoodEditButton"
   )
   ?.addEventListener(
     "click",
-    resetFoodForm
+    () => {
+
+      resetFoodForm();
+
+      hooks.showToast(
+        "已取消編輯"
+      );
+
+    }
   );
 
+
+  /* =====================================================
+     SEARCH
+  ===================================================== */
 
   getElement(
     "foodSearch"
@@ -2351,9 +5457,102 @@ function bindFoodEvents() {
   );
 
 
-  /*
-    Rating Stars
-  */
+  /* =====================================================
+     FILTER PANEL
+  ===================================================== */
+
+  getElement(
+    "foodFilterToggleButton"
+  )
+  ?.addEventListener(
+    "click",
+    toggleFoodFilterPanel
+  );
+
+
+  /* =====================================================
+     RECOMMENDED FILTER
+  ===================================================== */
+
+  getElement(
+    "foodRecommendFilterButton"
+  )
+  ?.addEventListener(
+    "click",
+    toggleFoodRecommendedFilter
+  );
+
+
+  /* =====================================================
+     CLEAR FILTER
+  ===================================================== */
+
+  getElement(
+    "foodClearFilterButton"
+  )
+  ?.addEventListener(
+    "click",
+    clearFoodFilters
+  );
+
+
+  /* =====================================================
+     FILTER CHIPS
+  ===================================================== */
+
+  document
+    .querySelectorAll(
+      "[data-food-filter-type]"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            const type =
+              button.dataset.foodFilterType;
+
+
+            const value =
+              button.dataset.foodFilterValue ||
+              "";
+
+
+            if (
+              type ===
+              "meal"
+            ) {
+
+              setFoodMealFilter(
+                value
+              );
+
+            }
+
+
+            if (
+              type ===
+              "category"
+            ) {
+
+              setFoodCategoryFilter(
+                value
+              );
+
+            }
+
+          }
+        );
+
+      }
+    );
+
+
+  /* =====================================================
+     RATING STARS
+  ===================================================== */
 
   document
     .querySelectorAll(
@@ -2377,9 +5576,86 @@ function bindFoodEvents() {
     );
 
 
-  /*
-    Food List Event Delegation
-  */
+  /* =====================================================
+     PHOTO SELECT
+  ===================================================== */
+
+  getElement(
+    "foodPhotoInput"
+  )
+  ?.addEventListener(
+    "change",
+    handleFoodPhotoSelected
+  );
+
+
+  /* =====================================================
+     REMOVE PHOTO
+  ===================================================== */
+
+  getElement(
+    "removeFoodPhotoButton"
+  )
+  ?.addEventListener(
+    "click",
+    removeFoodPhoto
+  );
+
+
+  /* =====================================================
+     NEARBY PLACE CLICK
+  ===================================================== */
+
+  getElement(
+    "foodNearbyList"
+  )
+  ?.addEventListener(
+    "click",
+    event => {
+
+      const button =
+        event.target.closest(
+          "[data-food-nearby-index]"
+        );
+
+
+      if (
+        !button
+      ) {
+
+        return;
+
+      }
+
+
+      const index =
+        Number(
+          button.dataset.foodNearbyIndex
+        );
+
+
+      if (
+        Number.isNaN(
+          index
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      selectFoodNearbyPlace(
+        index
+      );
+
+    }
+  );
+
+
+  /* =====================================================
+     FOOD LIST EVENT DELEGATION
+  ===================================================== */
 
   getElement(
     "foodList"
@@ -2411,6 +5687,8 @@ function bindFoodEvents() {
         button.dataset.clientUid;
 
 
+      /* Edit */
+
       if (
         action ===
         "edit-food"
@@ -2420,8 +5698,12 @@ function bindFoodEvents() {
           clientUid
         );
 
+        return;
+
       }
 
+
+      /* Delete */
 
       if (
         action ===
@@ -2430,6 +5712,22 @@ function bindFoodEvents() {
 
         deleteFood(
           clientUid
+        );
+
+        return;
+
+      }
+
+
+      /* Date collapse */
+
+      if (
+        action ===
+        "toggle-food-date"
+      ) {
+
+        toggleFoodDate(
+          button.dataset.date
         );
 
       }
