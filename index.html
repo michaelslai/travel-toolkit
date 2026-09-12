@@ -17,15 +17,16 @@
 
 
   <!-- =====================================================
-       Travel Toolkit V2.2.0 Modular
+       Travel Toolkit V2.2.2 Modular
        File: index.html
        Modified: 2026-09-12
 
-       Changes:
-       - 正式切換 Modular 架構
-       - CSS 抽離至 css/app.css
-       - JS 入口改為 js/main.js
-       - Footprint / Food / Expense / Trip / Sync
+       V2.2.2 Changes:
+       - Footprint 地圖 ↔ 紀錄雙向定位
+       - Footprint 每日站點編號 / 高亮
+       - 補回旅程摘要 / 旅行統計 / 每日摘要
+       - 補回前一站距離 / 下一站時間
+       - 補回最新一筆 / 回地圖
        - 保留 Local-first + D1 Sync
   ====================================================== -->
 
@@ -40,7 +41,7 @@
   <!-- App CSS -->
   <link
     rel="stylesheet"
-    href="./css/app.css?v=2.2.0"
+    href="./css/app.css?v=2.2.2"
   >
 </head>
 
@@ -69,7 +70,7 @@
           id="appVersion"
           class="app-version"
         >
-          V2.2.0
+          V2.2.2
         </div>
 
       </div>
@@ -188,6 +189,95 @@
       <!-- Map -->
 
       <div id="footprintMap"></div>
+
+
+      <!-- Footprint Trip Summary -->
+
+      <div class="card">
+
+        <h2 class="card-title">
+          📊 旅程摘要
+        </h2>
+
+
+        <div class="trip-summary-box">
+
+          <div
+            id="footprintTripSummaryTitle"
+            class="trip-summary-title"
+          >
+            未分類旅程
+          </div>
+
+
+          <div class="trip-summary-grid">
+
+            <div class="trip-summary-stat">
+
+              <div
+                id="footprintTripSummaryRecords"
+                class="trip-summary-value"
+              >
+                0
+              </div>
+
+              <div class="trip-summary-label">
+                足跡
+              </div>
+
+            </div>
+
+
+            <div class="trip-summary-stat">
+
+              <div
+                id="footprintTripSummaryDays"
+                class="trip-summary-value"
+              >
+                0
+              </div>
+
+              <div class="trip-summary-label">
+                天數
+              </div>
+
+            </div>
+
+
+            <div class="trip-summary-stat">
+
+              <div
+                id="footprintTripSummaryDistance"
+                class="trip-summary-value"
+              >
+                0 m
+              </div>
+
+              <div class="trip-summary-label">
+                已追蹤移動
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="footprintTripSummaryPeriod"
+            class="trip-summary-period"
+          >
+            尚無足跡
+          </div>
+
+
+          <div
+            id="footprintTripSummaryTypes"
+            class="trip-summary-types"
+          ></div>
+
+        </div>
+
+      </div>
 
 
       <!-- Add/Edit Footprint -->
@@ -397,6 +487,69 @@
       </div>
 
 
+      <!-- Footprint Statistics -->
+
+      <div class="card">
+
+        <h2 class="card-title">
+          📊 旅行統計
+        </h2>
+
+
+        <div class="footprint-stats-grid">
+
+          <div class="footprint-stat-box">
+
+            <div
+              id="footprintStatsRecords"
+              class="footprint-stat-value"
+            >
+              0
+            </div>
+
+            <div class="footprint-stat-label">
+              足跡
+            </div>
+
+          </div>
+
+
+          <div class="footprint-stat-box">
+
+            <div
+              id="footprintStatsDays"
+              class="footprint-stat-value"
+            >
+              0
+            </div>
+
+            <div class="footprint-stat-label">
+              天數
+            </div>
+
+          </div>
+
+
+          <div class="footprint-stat-box">
+
+            <div
+              id="footprintStatsDistance"
+              class="footprint-stat-value"
+            >
+              0 m
+            </div>
+
+            <div class="footprint-stat-label">
+              已追蹤移動
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
       <!-- Footprint Filters -->
 
       <div class="card">
@@ -475,6 +628,36 @@
 
         </div>
 
+
+        <div
+          id="footprintSearchResultInfo"
+          class="search-result-info"
+        ></div>
+
+      </div>
+
+
+      <!-- Footprint Timeline Actions -->
+
+      <div class="footprint-timeline-actions">
+
+        <button
+          type="button"
+          id="jumpToLatestFootprintButton"
+          class="footprint-latest-button"
+        >
+          ⏬ 最新一筆
+        </button>
+
+
+        <button
+          type="button"
+          id="backToFootprintMapButton"
+          class="footprint-map-button"
+        >
+          🗺️ 回地圖
+        </button>
+
       </div>
 
 
@@ -548,7 +731,6 @@
               type="time"
               id="foodTime"
             >
-
           </div>
 
         </div>
@@ -1279,8 +1461,6 @@
       <div id="tripList"></div>
 
     </section>
-
-
     <!-- ===================================================
          SYNC PANEL
     ==================================================== -->
@@ -1575,7 +1755,7 @@
 
       <div class="app-info">
 
-        Travel Toolkit V2.2.0 Modular
+        Travel Toolkit V2.2.2 Modular
 
         <br>
 
@@ -1670,9 +1850,7 @@
 
 <script
   type="module"
-  src="./js/main.js?v=2.2.0"
+  src="./js/main.js?v=2.2.2"
 ></script>
-
-
 </body>
-</html>
+</html>  
