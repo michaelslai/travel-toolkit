@@ -16,13 +16,14 @@
    Debug Revision: D1
    - 加入 Sync Queue / Push Upsert / Push Delete debug log
    - 加入 Pull Merge / Keep Local / Accept Server debug log
-   - 僅增加 Console 可觀測性，不修改同步行為
 
-   V2.2.3:
-   - photo_local 為 Local-only，不送 D1 / Worker
-   - Push reconcile 同 UID時保留 photo_local
-   - Canonical UID reconcile 時保留 photo_local
-   - Pull merge 時保留 photo_local
+   V2.2.3 Food Local Photo
+   - photo_local 僅保留於 IndexedDB
+   - prepareSyncData 不送 photo_local 到 Worker / D1
+   - Push reconcile 同 UID 保留 photo_local
+   - Canonical UID reconcile 保留 photo_local
+   - Pull merge 保留 photo_local
+   - 加入 PHOTO RECONCILE / PHOTO PULL debug log
 ========================================================= */
 
 import {
@@ -79,10 +80,6 @@ let autoSyncEnabled =
 
 /* =========================================================
    SYNC DEBUG
-
-   Debug Revision D1:
-   - 只輸出 Console log
-   - 不修改任何 sync / queue / merge 行為
 ========================================================= */
 
 const SYNC_DEBUG =
@@ -120,11 +117,6 @@ function syncDebug(
 
 /* =========================================================
    UI / APP CALLBACK HOOKS
-
-   api-sync.js 不直接操作 DOM。
-
-   main.js 之後可以透過 setSyncHooks()
-   接收狀態更新。
 ========================================================= */
 
 let hooks = {
@@ -347,11 +339,6 @@ export async function setAutoSyncEnabled(
   );
 
 
-  /*
-    從 OFF → ON 時，
-    若有網路就補同步。
-  */
-
   if (
     autoSyncEnabled &&
     navigator.onLine
@@ -402,12 +389,6 @@ async function serverRecordToLocal(
   delete local.id;
 
 
-  /*
-    trip_id
-    →
-    trip_client_uid
-  */
-
   if (
     entity !==
     "trips"
@@ -422,12 +403,6 @@ async function serverRecordToLocal(
   }
 
 
-  /*
-    previous_record_id
-    →
-    previous_client_uid
-  */
-
   if (
     entity ===
     "footprints"
@@ -441,12 +416,6 @@ async function serverRecordToLocal(
 
   }
 
-
-  /*
-    expense.source_id
-    →
-    food client_uid
-  */
 
   if (
     entity ===
@@ -471,9 +440,6 @@ async function serverRecordToLocal(
 
 /* =========================================================
    CANONICAL UID RECONCILE
-
-   用於舊 D1 row 已有 canonical client_uid，
-   但 Local 暫時用了另一個 uid 的情況。
 ========================================================= */
 
 async function reconcileCanonicalUid(
@@ -504,10 +470,6 @@ async function reconcileCanonicalUid(
 
   /*
     Server UID 和 Local UID 相同。
-
-    V2.2.3:
-    不能直接用 Server record 覆蓋 Local，
-    否則 Local-only 的 photo_local 會遺失。
   */
 
   if (
@@ -522,6 +484,27 @@ async function reconcileCanonicalUid(
       );
 
 
+    syncDebug(
+      "PHOTO RECONCILE BEFORE",
+      {
+        entity,
+
+        originalUid,
+
+        canonicalUid,
+
+        has_photo_local:
+          Boolean(
+            existing?.photo_local
+          ),
+
+        photo_local_length:
+          existing?.photo_local?.length ||
+          0
+      }
+    );
+
+
     const local =
       await serverRecordToLocal(
         entity,
@@ -531,7 +514,8 @@ async function reconcileCanonicalUid(
 
     /*
       V2.2.3
-      Food photo_local 僅存在 Local IndexedDB。
+      photo_local 是 Local-only 欄位。
+      Worker / D1 不保存照片。
     */
 
     if (
@@ -557,6 +541,30 @@ async function reconcileCanonicalUid(
         sync_status:
           "synced"
 
+      }
+    );
+
+
+    const photoCheckAfterReconcile =
+      await dbGet(
+        storeName,
+        canonicalUid
+      );
+
+
+    syncDebug(
+      "PHOTO RECONCILE AFTER",
+      {
+        entity,
+
+        has_photo_local:
+          Boolean(
+            photoCheckAfterReconcile?.photo_local
+          ),
+
+        photo_local_length:
+          photoCheckAfterReconcile?.photo_local?.length ||
+          0
       }
     );
 
@@ -596,12 +604,6 @@ async function reconcileCanonicalUid(
       serverRecord
     );
 
-
-  /*
-    V2.2.3
-    Canonical UID 改變時，
-    仍需保留 Local-only photo_local。
-  */
 
   const preservedPhotoLocal =
 
@@ -652,9 +654,7 @@ async function reconcileCanonicalUid(
     storeName,
     mergedRecord
   );
-     /*
-    刪除 temporary local row。
-  */
+
 
   await dbDelete(
     storeName,
@@ -824,8 +824,6 @@ async function reconcileCanonicalUid(
   }
 
 }
-
-
 /* =========================================================
    MERGE SERVER RECORD
 ========================================================= */
@@ -864,6 +862,26 @@ async function mergeServerRecord(
       storeName,
       serverRecord.client_uid
     );
+
+
+  syncDebug(
+    "PHOTO PULL BEFORE",
+    {
+      entity,
+
+      client_uid:
+        serverRecord.client_uid,
+
+      has_photo_local:
+        Boolean(
+          existing?.photo_local
+        ),
+
+      photo_local_length:
+        existing?.photo_local?.length ||
+        0
+    }
+  );
 
 
   syncDebug(
@@ -1005,8 +1023,8 @@ async function mergeServerRecord(
 
   /*
     V2.2.3
-    D1 / Worker 不保存 photo_local，
-    Pull Server → Local 時保留本機照片。
+    D1 / Worker 不保存 photo_local。
+    Pull Server → Local 時必須保留本機照片。
   */
 
   if (
@@ -1076,6 +1094,33 @@ async function mergeServerRecord(
   );
 
 
+  const photoCheckAfterPull =
+    await dbGet(
+      storeName,
+      serverRecord.client_uid
+    );
+
+
+  syncDebug(
+    "PHOTO PULL AFTER",
+    {
+      entity,
+
+      client_uid:
+        serverRecord.client_uid,
+
+      has_photo_local:
+        Boolean(
+          photoCheckAfterPull?.photo_local
+        ),
+
+      photo_local_length:
+        photoCheckAfterPull?.photo_local?.length ||
+        0
+    }
+  );
+
+
   await removeQueueItem(
     entity,
     serverRecord.client_uid
@@ -1110,11 +1155,36 @@ function prepareSyncData(
 
   /*
     V2.2.3
-    Local-only food photo.
-    不送到 D1 / Worker。
+    photo_local 僅存在 Local IndexedDB。
+    不送到 Worker / D1。
   */
 
   delete data.photo_local;
+
+
+  syncDebug(
+    "PHOTO PAYLOAD CHECK",
+    {
+      entity,
+
+      client_uid:
+        record.client_uid,
+
+      local_has_photo:
+        Boolean(
+          record.photo_local
+        ),
+
+      local_photo_length:
+        record.photo_local?.length ||
+        0,
+
+      payload_has_photo_local:
+        Boolean(
+          data.photo_local
+        )
+    }
+  );
 
 
   /*
@@ -1231,6 +1301,27 @@ async function syncUpsertItem(
     record.client_uid;
 
 
+  syncDebug(
+    "PHOTO PUSH BEFORE STATUS",
+    {
+      entity:
+        queueItem.entity,
+
+      client_uid:
+        record.client_uid,
+
+      has_photo_local:
+        Boolean(
+          record.photo_local
+        ),
+
+      photo_local_length:
+        record.photo_local?.length ||
+        0
+    }
+  );
+
+
   record.sync_status =
     "syncing";
 
@@ -1292,15 +1383,14 @@ async function syncUpsertItem(
         record.name ??
         null,
 
-      /*
-        V2.2.3 debug:
-        僅確認 Local 是否有照片，
-        不輸出 Base64。
-      */
       has_photo_local:
         Boolean(
           record.photo_local
-        )
+        ),
+
+      photo_local_length:
+        record.photo_local?.length ||
+        0
     }
   );
 
@@ -1519,7 +1609,7 @@ async function syncDeleteItem(
         null
     }
   );
-     const result =
+  const result =
     await api(
       "/api/sync/delete",
       {
@@ -2261,6 +2351,7 @@ export async function getSyncStatusSnapshot() {
   };
 
 }
+
 /* =========================================================
    FULL SYNC
 ========================================================= */
@@ -2273,10 +2364,6 @@ export async function syncNow(
     options.force ===
     true;
 
-
-  /*
-    已經有同步工作。
-  */
 
   if (
     syncRunning
@@ -2293,11 +2380,6 @@ export async function syncNow(
   }
 
 
-  /*
-    Auto Sync OFF。
-    除非 force = true。
-  */
-
   if (
     !force &&
     !autoSyncEnabled
@@ -2313,10 +2395,6 @@ export async function syncNow(
 
   }
 
-
-  /*
-    沒網路。
-  */
 
   if (
     !navigator.onLine
@@ -2538,16 +2616,8 @@ export async function saveAndSync(
     );
 
 
-  /*
-    通知畫面刷新 Local。
-  */
-
   hooks.onDataChanged();
 
-
-  /*
-    Auto Sync ON 才背景送 D1。
-  */
 
   if (
     navigator.onLine &&
@@ -2652,9 +2722,6 @@ export async function deleteAndSync(
 
 /* =========================================================
    RETRY ALL ERROR QUEUE ITEMS
-
-   後面同步頁若要加「重試失敗」
-   可直接使用。
 ========================================================= */
 
 export async function retryAllErrors() {
@@ -2800,7 +2867,6 @@ export function isSyncRunning() {
   return syncRunning;
 
 }
-
 
 /* =========================================================
    NETWORK EVENTS
