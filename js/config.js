@@ -10,7 +10,7 @@
 ========================================================= */
 
 export const APP_VERSION =
-  "2.2.2";
+  "2.2.3";
 
 
 export const EXPECTED_API_VERSION =
