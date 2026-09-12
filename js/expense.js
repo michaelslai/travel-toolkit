@@ -1,18 +1,25 @@
 /* =========================================================
-   Travel Toolkit V2.2.0 Modular
+   Travel Toolkit V2.2.3 Modular
    File: js/expense.js
-   Modified: 2026-09-12
+   Modified: 2026-09-13
 
    Changes:
    - 從 V2.1.2 抽離 Expense CRUD
    - 不直接處理 D1
    - 透過 api-sync.js saveAndSync / deleteAndSync
    - 使用 event delegation
+
+   V2.2.3:
+   - 加入 Expense → Food 反向同步
+   - 僅同步 amount / currency
+   - 僅限 source_type === "food"
+   - 保留 Local-first + D1 Sync
 ========================================================= */
 
 import {
 
-  STORE_EXPENSES
+  STORE_EXPENSES,
+  STORE_FOOD
 
 } from "./config.js";
 
@@ -501,8 +508,6 @@ export function resetExpenseForm() {
     "none";
 
 }
-
-
 /* =========================================================
    SAVE
 ========================================================= */
@@ -686,7 +691,8 @@ async function saveExpense() {
       null,
 
     /*
-      手動消費紀錄
+      手動消費紀錄，
+      或延續既有 Food 關聯。
     */
 
     source_type:
@@ -703,10 +709,75 @@ async function saveExpense() {
   };
 
 
+  /*
+    先儲存 Expense。
+  */
+
   await saveAndSync(
     "expenses",
     record
   );
+
+
+  /* =====================================================
+     V2.2.3
+     EXPENSE → FOOD
+
+     只有原本就是由 Food 建立的 Expense
+     才反向更新 Food。
+
+     只同步：
+     - amount
+     - currency
+
+     不同步：
+     - title
+     - category
+     - payment_method
+     - payer
+     - note
+     - date / time
+  ===================================================== */
+
+  if (
+    old?.source_type ===
+      "food" &&
+    old?.source_client_uid
+  ) {
+
+    const linkedFood =
+      await dbGet(
+        STORE_FOOD,
+        old.source_client_uid
+      );
+
+
+    if (
+      linkedFood &&
+      !linkedFood.deleted_at
+    ) {
+
+      const foodRecord = {
+
+        ...linkedFood,
+
+        amount:
+          record.amount,
+
+        currency:
+          record.currency
+
+      };
+
+
+      await saveAndSync(
+        "food_records",
+        foodRecord
+      );
+
+    }
+
+  }
 
 
   resetExpenseForm();
@@ -719,9 +790,23 @@ async function saveExpense() {
 
     getAutoSyncEnabled()
 
-      ? "💰 已存 Local，正在同步 D1"
+      ? (
+          old?.source_type ===
+            "food"
 
-      : "💰 已存 Local，等待手動同步"
+            ? "💰 已更新消費與美食，正在同步 D1"
+
+            : "💰 已存 Local，正在同步 D1"
+        )
+
+      : (
+          old?.source_type ===
+            "food"
+
+            ? "💰 已更新消費與美食，等待手動同步"
+
+            : "💰 已存 Local，等待手動同步"
+        )
 
   );
 
@@ -1098,7 +1183,6 @@ function formatAmount(
     );
 
 }
-
 
 /* =========================================================
    RENDER
