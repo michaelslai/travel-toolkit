@@ -1,19 +1,22 @@
 /* =========================================================
-   Travel Toolkit V2.2.3 Modular
+   Travel Toolkit V2.2.4 Modular
    File: js/expense.js
    Modified: 2026-09-13
 
-   Changes:
-   - 從 V2.1.2 抽離 Expense CRUD
-   - 不直接處理 D1
-   - 透過 api-sync.js saveAndSync / deleteAndSync
-   - 使用 event delegation
+   Base:
+   - V2.2.3 Expense CRUD
+   - Local-first
+   - D1 Sync via api-sync.js
 
-   V2.2.3:
-   - 加入 Expense → Food 反向同步
-   - 僅同步 amount / currency
-   - 僅限 source_type === "food"
-   - 保留 Local-first + D1 Sync
+   V2.2.4 Changes:
+   - 強化 Expense → Food 雙向關聯
+   - 反向只同步 amount / currency
+   - 優先使用 source_client_uid 尋找 Food
+   - source_client_uid 找不到時，
+     fallback 使用 source_id → food.cloud_id
+   - 不修改 Food 照片 / 評分 / 店家 / 餐點 / 備註
+   - 加入 EXPENSE→FOOD debug log
+   - 一般 Expense 不會更新 Food
 ========================================================= */
 
 import {
@@ -27,6 +30,7 @@ import {
 import {
 
   dbGet,
+  dbGetAll,
   createUID
 
 } from "./db.js";
@@ -117,7 +121,7 @@ export function setExpenseData(
 
 
 /* =========================================================
-   HELPERS
+   BASIC HELPERS
 ========================================================= */
 
 function pad(
@@ -175,6 +179,10 @@ function getLocalTime() {
 
 }
 
+
+/* =========================================================
+   TIMEZONE
+========================================================= */
 
 function getTimezoneInfo() {
 
@@ -235,6 +243,10 @@ function getTimezoneInfo() {
 }
 
 
+/* =========================================================
+   DATE + TIME
+========================================================= */
+
 function combineLocalDateTime(
   dateValue,
   timeValue
@@ -266,6 +278,10 @@ function combineLocalDateTime(
 
 }
 
+
+/* =========================================================
+   HTML ESCAPE
+========================================================= */
 
 function escapeHtml(
   value
@@ -399,6 +415,328 @@ function syncBadgeHtml(
 
 
 /* =========================================================
+   FIND LINKED FOOD
+
+   優先順序：
+
+   1. source_client_uid
+      → food.client_uid
+
+   2. source_id
+      → food.cloud_id
+
+   這樣可同時支援：
+   - 尚未同步的 Local Food
+   - 已同步至 D1 的 Food
+   - Pull 回來的舊資料
+========================================================= */
+
+async function findLinkedFood(
+  expenseRecord
+) {
+
+  if (
+    !expenseRecord ||
+    expenseRecord.source_type !==
+      "food"
+  ) {
+
+    return null;
+
+  }
+
+
+  /* ---------------------------------------------------------
+     Method 1:
+     source_client_uid → client_uid
+  --------------------------------------------------------- */
+
+  if (
+    expenseRecord.source_client_uid
+  ) {
+
+    const food =
+      await dbGet(
+        STORE_FOOD,
+        expenseRecord.source_client_uid
+      );
+
+
+    if (
+      food
+    ) {
+
+      console.log(
+        "[EXPENSE→FOOD] linked by client_uid",
+        {
+          expense_uid:
+            expenseRecord.client_uid,
+
+          food_uid:
+            food.client_uid,
+
+          food_cloud_id:
+            food.cloud_id
+        }
+      );
+
+
+      return food;
+
+    }
+
+  }
+
+
+  /* ---------------------------------------------------------
+     Method 2:
+     source_id → cloud_id
+  --------------------------------------------------------- */
+
+  if (
+    expenseRecord.source_id !==
+      null &&
+    expenseRecord.source_id !==
+      undefined
+  ) {
+
+    const allFoods =
+      await dbGetAll(
+        STORE_FOOD
+      );
+
+
+    const sourceId =
+      Number(
+        expenseRecord.source_id
+      );
+
+
+    const food =
+      allFoods.find(
+        item =>
+          Number(
+            item.cloud_id
+          ) ===
+          sourceId
+      );
+
+
+    if (
+      food
+    ) {
+
+      console.log(
+        "[EXPENSE→FOOD] linked by cloud_id",
+        {
+          expense_uid:
+            expenseRecord.client_uid,
+
+          source_id:
+            expenseRecord.source_id,
+
+          food_uid:
+            food.client_uid,
+
+          food_cloud_id:
+            food.cloud_id
+        }
+      );
+
+
+      return food;
+
+    }
+
+  }
+
+
+  console.warn(
+    "[EXPENSE→FOOD] linked food not found",
+    {
+      expense_uid:
+        expenseRecord.client_uid,
+
+      source_type:
+        expenseRecord.source_type,
+
+      source_client_uid:
+        expenseRecord.source_client_uid,
+
+      source_id:
+        expenseRecord.source_id
+    }
+  );
+
+
+  return null;
+
+}
+
+
+/* =========================================================
+   UPDATE LINKED FOOD
+
+   只允許 Expense 反向同步：
+
+   - amount
+   - currency
+
+   其他 Food 欄位完全保留。
+========================================================= */
+
+async function updateLinkedFoodFromExpense(
+  expenseRecord
+) {
+
+  if (
+    !expenseRecord ||
+    expenseRecord.source_type !==
+      "food"
+  ) {
+
+    return false;
+
+  }
+
+
+  console.log(
+    "[EXPENSE→FOOD] START",
+    {
+      expense_uid:
+        expenseRecord.client_uid,
+
+      amount:
+        expenseRecord.amount,
+
+      currency:
+        expenseRecord.currency,
+
+      source_client_uid:
+        expenseRecord.source_client_uid,
+
+      source_id:
+        expenseRecord.source_id
+    }
+  );
+
+
+  const linkedFood =
+    await findLinkedFood(
+      expenseRecord
+    );
+
+
+  if (
+    !linkedFood
+  ) {
+
+    return false;
+
+  }
+
+
+  if (
+    linkedFood.deleted_at
+  ) {
+
+    console.warn(
+      "[EXPENSE→FOOD] food already deleted",
+      {
+        food_uid:
+          linkedFood.client_uid
+      }
+    );
+
+
+    return false;
+
+  }
+
+
+  const foodRecord = {
+
+    ...linkedFood,
+
+    amount:
+      expenseRecord.amount,
+
+    currency:
+      expenseRecord.currency,
+
+    deleted_at:
+      null
+
+  };
+
+
+  console.log(
+    "[EXPENSE→FOOD] BEFORE SAVE",
+    {
+      food_uid:
+        foodRecord.client_uid,
+
+      old_amount:
+        linkedFood.amount,
+
+      new_amount:
+        foodRecord.amount,
+
+      old_currency:
+        linkedFood.currency,
+
+      new_currency:
+        foodRecord.currency,
+
+      photo_local_length:
+        linkedFood.photo_local
+          ?.length ||
+        0
+    }
+  );
+
+
+  await saveAndSync(
+    "food_records",
+    foodRecord
+  );
+
+
+  const savedFood =
+    await dbGet(
+      STORE_FOOD,
+      foodRecord.client_uid
+    );
+
+
+  console.log(
+    "[EXPENSE→FOOD] AFTER SAVE",
+    {
+      food_uid:
+        savedFood?.client_uid,
+
+      amount:
+        savedFood?.amount,
+
+      currency:
+        savedFood?.currency,
+
+      sync_status:
+        savedFood?.sync_status,
+
+      photo_local_length:
+        savedFood?.photo_local
+          ?.length ||
+        0
+    }
+  );
+
+
+  return true;
+
+}
+
+/* =========================================================
    RESET FORM
 ========================================================= */
 
@@ -508,6 +846,8 @@ export function resetExpenseForm() {
     "none";
 
 }
+
+
 /* =========================================================
    SAVE
 ========================================================= */
@@ -691,8 +1031,8 @@ async function saveExpense() {
       null,
 
     /*
-      手動消費紀錄，
-      或延續既有 Food 關聯。
+      保留既有來源關聯。
+      一般手動 Expense 則維持 null。
     */
 
     source_type:
@@ -703,15 +1043,47 @@ async function saveExpense() {
       old?.source_client_uid ||
       null,
 
+    source_id:
+      old?.source_id ??
+      null,
+
     deleted_at:
       null
 
   };
 
 
-  /*
-    先儲存 Expense。
-  */
+  console.log(
+    "[EXPENSE SAVE] BEFORE",
+    {
+      editingUid,
+
+      is_edit:
+        Boolean(
+          editingUid
+        ),
+
+      old_source_type:
+        old?.source_type,
+
+      old_source_client_uid:
+        old?.source_client_uid,
+
+      old_source_id:
+        old?.source_id,
+
+      amount:
+        record.amount,
+
+      currency:
+        record.currency
+    }
+  );
+
+
+  /* =====================================================
+     1. SAVE EXPENSE
+  ===================================================== */
 
   await saveAndSync(
     "expenses",
@@ -719,60 +1091,71 @@ async function saveExpense() {
   );
 
 
+  console.log(
+    "[EXPENSE SAVE] EXPENSE SAVED",
+    {
+      expense_uid:
+        record.client_uid,
+
+      amount:
+        record.amount,
+
+      currency:
+        record.currency,
+
+      source_type:
+        record.source_type,
+
+      source_client_uid:
+        record.source_client_uid,
+
+      source_id:
+        record.source_id
+    }
+  );
+
+
   /* =====================================================
-     V2.2.3
-     EXPENSE → FOOD
+     2. EXPENSE → FOOD
 
-     只有原本就是由 Food 建立的 Expense
-     才反向更新 Food。
-
-     只同步：
-     - amount
-     - currency
-
-     不同步：
-     - title
-     - category
-     - payment_method
-     - payer
-     - note
-     - date / time
+     只有已經與 Food 關聯的 Expense
+     才做反向更新。
   ===================================================== */
 
+  let foodUpdated =
+    false;
+
+
   if (
-    old?.source_type ===
-      "food" &&
-    old?.source_client_uid
+    record.source_type ===
+    "food"
   ) {
 
-    const linkedFood =
-      await dbGet(
-        STORE_FOOD,
-        old.source_client_uid
+    try {
+
+      foodUpdated =
+        await updateLinkedFoodFromExpense(
+          record
+        );
+
+    }
+    catch (
+      error
+    ) {
+
+      console.error(
+        "[EXPENSE→FOOD] UPDATE FAILED",
+        error
       );
 
 
-    if (
-      linkedFood &&
-      !linkedFood.deleted_at
-    ) {
-
-      const foodRecord = {
-
-        ...linkedFood,
-
-        amount:
-          record.amount,
-
-        currency:
-          record.currency
-
-      };
-
-
-      await saveAndSync(
-        "food_records",
-        foodRecord
+      hooks.showMessage(
+        "消費已儲存，但美食金額回寫失敗：" +
+        (
+          error?.message ||
+          error
+        ),
+        "error"
       );
 
     }
@@ -780,35 +1163,61 @@ async function saveExpense() {
   }
 
 
+  /* =====================================================
+     3. REFRESH UI
+  ===================================================== */
+
   resetExpenseForm();
 
 
   hooks.requestRefresh();
 
 
-  hooks.showToast(
+  /* =====================================================
+     4. TOAST
+  ===================================================== */
 
-    getAutoSyncEnabled()
+  if (
+    record.source_type ===
+      "food" &&
+    foodUpdated
+  ) {
 
-      ? (
-          old?.source_type ===
-            "food"
+    hooks.showToast(
 
-            ? "💰 已更新消費與美食，正在同步 D1"
+      getAutoSyncEnabled()
 
-            : "💰 已存 Local，正在同步 D1"
-        )
+        ? "💰 已更新消費與美食，正在同步 D1"
 
-      : (
-          old?.source_type ===
-            "food"
+        : "💰 已更新消費與美食，等待手動同步"
 
-            ? "💰 已更新消費與美食，等待手動同步"
+    );
 
-            : "💰 已存 Local，等待手動同步"
-        )
+  }
+  else if (
+    record.source_type ===
+      "food" &&
+    !foodUpdated
+  ) {
 
-  );
+    hooks.showToast(
+      "⚠️ 消費已更新，但未找到對應美食紀錄"
+    );
+
+  }
+  else {
+
+    hooks.showToast(
+
+      getAutoSyncEnabled()
+
+        ? "💰 已存 Local，正在同步 D1"
+
+        : "💰 已存 Local，等待手動同步"
+
+    );
+
+  }
 
 }
 
@@ -999,8 +1408,6 @@ export function editExpense(
   );
 
 }
-
-
 /* =========================================================
    DELETE
 ========================================================= */
@@ -1183,6 +1590,7 @@ function formatAmount(
     );
 
 }
+
 
 /* =========================================================
    RENDER
@@ -1423,8 +1831,6 @@ export function renderExpenses() {
       );
 
 }
-
-
 /* =========================================================
    BIND EVENTS
 ========================================================= */
