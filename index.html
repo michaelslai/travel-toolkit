@@ -1,29 +1,33 @@
 <!--
 =============================================================
- Travel Toolkit V2.1.1
+ Travel Toolkit V2.1.2
  Modified: 2026-09-12
 =============================================================
 
-【V2.1.1】
-- 修正 V2.1.0 啟動流程可能中斷的問題
-- 重整 JavaScript 初始化順序
-- 移除後段覆寫 syncUpsertItem 的方式
-- canonical client_uid 邏輯直接整合進同步引擎
-- 新增全域 JavaScript Error 顯示
-- 新增 Promise Error 顯示
-- 新增 IndexedDB 初始化錯誤顯示
-- 強化 Safari / iPhone 相容性
-- 保留 Local-first
+【V2.1.2】
+- 保留 Local-first 架構
+- 新增「同步 D1」開關
+- 關閉同步 D1 時，新增 / 修改 / 刪除只寫入 Local
+- 關閉同步 D1 不會關閉網路，因此：
+  GPS / 地址查詢 / Nearby Places 仍可正常使用
+- 保留「立即同步 D1」按鈕
+- 即使自動同步關閉，也能強制手動同步
+- 恢復足跡 Nearby Places
+- GPS 完成後自動搜尋 500m 內附近地點
+- 最多顯示最近 10 個地點
+- Nearby 使用 Overpass API
+- Overpass 雙 Server fallback
+- 支援餐廳 / 咖啡 / 商店 / 車站 / 飯店 /
+  景點 / 機場等 POI
+- 點選 Nearby 地點，自動帶入地點名稱與類型
 - 保留 IndexedDB
 - 保留 pending / syncing / synced / error
-- 保留自動同步 D1
-- 保留離線新增
 - 保留 JSON 匯入 / 匯出
-- 保留 Trips / Footprints / Food / Expenses
-- 保留 Leaflet 足跡地圖
-- 保留美食 → 消費同步
+- 保留 D1 雙向同步
+- 保留美食 → 消費紀錄
+- 保留 JavaScript 啟動錯誤顯示
 
-Frontend Version : 2.1.1
+Frontend Version : 2.1.2
 Worker API       : 2.1.1
 Database         : travel_db
 =============================================================
@@ -48,7 +52,7 @@ Database         : travel_db
 >
 
 <title>
-  Travel Toolkit V2.1.1
+  Travel Toolkit V2.1.2
 </title>
 
 <link
@@ -100,10 +104,7 @@ button {
 
 button:disabled {
   opacity: .55;
-}
-
-a {
-  color: #2563eb;
+  cursor: default;
 }
 
 
@@ -247,15 +248,21 @@ header {
 
 
 /* =========================================================
-   DEBUG ERROR
+   STARTUP ERROR
 ========================================================= */
 
 #startupError {
   display: none;
 
-  width: min(920px,calc(100% - 24px));
+  width: min(
+    920px,
+    calc(100% - 24px)
+  );
 
-  margin: 12px auto 0;
+  margin:
+    12px
+    auto
+    0;
 
   padding: 12px;
 
@@ -436,6 +443,7 @@ textarea:focus {
 
 textarea {
   min-height: 76px;
+
   resize: vertical;
 }
 
@@ -502,6 +510,11 @@ textarea {
   color: #1d5fa7;
 }
 
+.btn-soft-green {
+  background: #eaf8ef;
+  color: #17713f;
+}
+
 .button-row {
   display: grid;
 
@@ -530,19 +543,25 @@ textarea {
 
 .message.success {
   display: block;
+
   background: #dcfce7;
+
   color: #166534;
 }
 
 .message.error {
   display: block;
+
   background: #fee2e2;
+
   color: #991b1b;
 }
 
 .message.info {
   display: block;
+
   background: #eaf3ff;
+
   color: #1759a7;
 }
 
@@ -563,6 +582,7 @@ textarea {
 
 .route-number-icon {
   background: transparent;
+
   border: 0;
 }
 
@@ -641,7 +661,94 @@ textarea {
 
 
 /* =========================================================
-   TYPE
+   NEARBY PLACES
+========================================================= */
+
+.nearby-wrap {
+  display: none;
+
+  margin-top: 12px;
+
+  padding: 12px;
+
+  border:
+    1px solid
+    #e5e7eb;
+
+  border-radius: 12px;
+
+  background: #fafafa;
+}
+
+.nearby-head {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 8px;
+
+  margin-bottom: 8px;
+}
+
+.nearby-title {
+  font-size: 14px;
+
+  font-weight: 900;
+}
+
+.nearby-status {
+  color: #6b7280;
+
+  font-size: 11px;
+}
+
+.nearby-list {
+  display: grid;
+
+  gap: 7px;
+}
+
+.nearby-item {
+  width: 100%;
+
+  padding: 10px 11px;
+
+  border:
+    1px solid
+    #e5e7eb;
+
+  border-radius: 10px;
+
+  background: white;
+
+  color: #374151;
+
+  text-align: left;
+}
+
+.nearby-item.selected {
+  border-color: #60a5fa;
+
+  background: #eff6ff;
+}
+
+.nearby-name {
+  font-weight: 800;
+}
+
+.nearby-meta {
+  margin-top: 3px;
+
+  color: #6b7280;
+
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   FOOTPRINT TYPE
 ========================================================= */
 
 .type-grid {
@@ -782,12 +889,8 @@ textarea {
 
 .badge.orange {
   background: #fff0e8;
-  color: #b45309;
-}
 
-.badge.green {
-  background: #eaf8ef;
-  color: #17713f;
+  color: #b45309;
 }
 
 .empty {
@@ -821,27 +924,31 @@ textarea {
 
 .sync-badge.synced {
   background: #dcfce7;
+
   color: #166534;
 }
 
 .sync-badge.pending {
   background: #fef3c7;
+
   color: #92400e;
 }
 
 .sync-badge.syncing {
   background: #dbeafe;
+
   color: #1d4ed8;
 }
 
 .sync-badge.error {
   background: #fee2e2;
+
   color: #b91c1c;
 }
 
 
 /* =========================================================
-   SYNC SUMMARY
+   SYNC PANEL
 ========================================================= */
 
 .sync-summary {
@@ -875,6 +982,110 @@ textarea {
   color: #6b7280;
 
   font-size: 11px;
+}
+
+.sync-setting-card {
+  padding: 12px;
+
+  border-radius: 12px;
+
+  background: #eef7ff;
+}
+
+.sync-setting-row {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 12px;
+}
+
+.sync-setting-main {
+  flex: 1;
+}
+
+.sync-setting-title {
+  font-weight: 900;
+}
+
+.sync-setting-desc {
+  margin-top: 4px;
+
+  color: #64748b;
+
+  font-size: 12px;
+
+  line-height: 1.5;
+}
+
+
+/* =========================================================
+   TOGGLE
+========================================================= */
+
+.toggle {
+  position: relative;
+
+  width: 52px;
+
+  height: 30px;
+
+  flex: 0 0 auto;
+}
+
+.toggle input {
+  display: none;
+}
+
+.toggle-slider {
+  position: absolute;
+
+  inset: 0;
+
+  border-radius: 999px;
+
+  background: #cbd5e1;
+
+  transition: .2s;
+}
+
+.toggle-slider::before {
+  content: "";
+
+  position: absolute;
+
+  left: 3px;
+
+  top: 3px;
+
+  width: 24px;
+
+  height: 24px;
+
+  border-radius: 50%;
+
+  background: white;
+
+  box-shadow:
+    0 1px 4px
+    rgba(0,0,0,.2);
+
+  transition: .2s;
+}
+
+.toggle input:checked +
+.toggle-slider {
+  background: #22c55e;
+}
+
+.toggle input:checked +
+.toggle-slider::before {
+  transform:
+    translateX(
+      22px
+    );
 }
 
 
@@ -917,7 +1128,7 @@ textarea {
 
 
 /* =========================================================
-   STAR
+   FOOD STAR
 ========================================================= */
 
 .star-group {
@@ -942,7 +1153,7 @@ textarea {
 
 
 /* =========================================================
-   SWITCH
+   SWITCH ROW
 ========================================================= */
 
 .switch-row {
@@ -967,10 +1178,14 @@ textarea {
   height: 21px;
 
   margin: 0;
+
+  flex: 0 0 auto;
 }
 
 .switch-row label {
   margin: 0;
+
+  font-size: 14px;
 }
 
 
@@ -1062,8 +1277,7 @@ textarea {
     translateX(-50%)
     translateY(20px);
 
-  transition:
-    .25s;
+  transition: .25s;
 }
 
 .toast.show {
@@ -1093,12 +1307,16 @@ textarea {
 (max-width:600px) {
 
   .tab {
-    padding: 9px 1px;
+    padding:
+      9px
+      1px;
+
     font-size: 11px;
   }
 
   .row2 {
-    grid-template-columns: 1fr;
+    grid-template-columns:
+      1fr;
   }
 
   .sync-summary {
@@ -1138,14 +1356,14 @@ textarea {
         </h1>
 
         <div class="app-subtitle">
-          Local-first · D1 自動同步
+          Local-first · D1 可切換自動同步
         </div>
 
       </div>
 
 
       <span class="version-badge">
-        V2.1.1
+        V2.1.2
       </span>
 
     </div>
@@ -1324,6 +1542,35 @@ textarea {
       </button>
 
 
+      <!-- Nearby Places -->
+
+      <div
+        id="nearbyWrap"
+        class="nearby-wrap"
+      >
+
+        <div class="nearby-head">
+
+          <div class="nearby-title">
+            📌 附近地點（最近 10 個）
+          </div>
+
+          <div
+            id="nearbyStatus"
+            class="nearby-status"
+          ></div>
+
+        </div>
+
+
+        <div
+          id="nearbyList"
+          class="nearby-list"
+        ></div>
+
+      </div>
+
+
       <div class="sub-title">
         類型
       </div>
@@ -1343,6 +1590,7 @@ textarea {
           景點
         </button>
 
+
         <button
           class="type-btn"
           data-type="restaurant"
@@ -1351,6 +1599,7 @@ textarea {
           <span>🍜</span>
           餐廳
         </button>
+
 
         <button
           class="type-btn"
@@ -1361,6 +1610,7 @@ textarea {
           飯店
         </button>
 
+
         <button
           class="type-btn"
           data-type="station"
@@ -1369,6 +1619,7 @@ textarea {
           <span>🚉</span>
           車站
         </button>
+
 
         <button
           class="type-btn"
@@ -1379,6 +1630,7 @@ textarea {
           機場
         </button>
 
+
         <button
           class="type-btn"
           data-type="shopping"
@@ -1388,6 +1640,7 @@ textarea {
           購物
         </button>
 
+
         <button
           class="type-btn"
           data-type="rest"
@@ -1396,6 +1649,7 @@ textarea {
           <span>☕</span>
           休息
         </button>
+
 
         <button
           class="type-btn active"
@@ -1537,7 +1791,9 @@ textarea {
 
         <div class="field">
 
-          <label>日期</label>
+          <label>
+            日期
+          </label>
 
           <input
             id="foodDate"
@@ -1549,7 +1805,9 @@ textarea {
 
         <div class="field">
 
-          <label>時間</label>
+          <label>
+            時間
+          </label>
 
           <input
             id="foodTime"
@@ -1586,7 +1844,9 @@ textarea {
 
       <div class="field">
 
-        <label>店家</label>
+        <label>
+          店家
+        </label>
 
         <input
           id="foodShop"
@@ -1598,7 +1858,9 @@ textarea {
 
       <div class="field">
 
-        <label>餐點</label>
+        <label>
+          餐點
+        </label>
 
         <input
           id="foodName"
@@ -1612,11 +1874,16 @@ textarea {
 
         <div class="field">
 
-          <label>餐別</label>
+          <label>
+            餐別
+          </label>
 
           <select id="foodMealType">
 
-            <option value="">未分類</option>
+            <option value="">
+              未分類
+            </option>
+
             <option>早餐</option>
             <option>午餐</option>
             <option>下午茶</option>
@@ -1631,11 +1898,16 @@ textarea {
 
         <div class="field">
 
-          <label>分類</label>
+          <label>
+            分類
+          </label>
 
           <select id="foodCategory">
 
-            <option value="">未分類</option>
+            <option value="">
+              未分類
+            </option>
+
             <option>主食</option>
             <option>麵飯</option>
             <option>燒肉</option>
@@ -1674,7 +1946,9 @@ textarea {
 
         <div class="field">
 
-          <label>金額</label>
+          <label>
+            金額
+          </label>
 
           <input
             id="foodAmount"
@@ -1688,14 +1962,27 @@ textarea {
 
         <div class="field">
 
-          <label>幣別</label>
+          <label>
+            幣別
+          </label>
 
           <select id="foodCurrency">
 
-            <option value="JPY">JPY</option>
-            <option value="TWD">TWD</option>
-            <option value="CNY">CNY</option>
-            <option value="USD">USD</option>
+            <option value="JPY">
+              JPY
+            </option>
+
+            <option value="TWD">
+              TWD
+            </option>
+
+            <option value="CNY">
+              CNY
+            </option>
+
+            <option value="USD">
+              USD
+            </option>
 
           </select>
 
@@ -1721,18 +2008,49 @@ textarea {
 
       <div class="field">
 
-        <label>評分</label>
+        <label>
+          評分
+        </label>
 
         <div
           id="foodStarGroup"
           class="star-group"
         >
 
-          <span class="star" data-value="1">★</span>
-          <span class="star" data-value="2">★</span>
-          <span class="star" data-value="3">★</span>
-          <span class="star" data-value="4">★</span>
-          <span class="star" data-value="5">★</span>
+          <span
+            class="star"
+            data-value="1"
+          >
+            ★
+          </span>
+
+          <span
+            class="star"
+            data-value="2"
+          >
+            ★
+          </span>
+
+          <span
+            class="star"
+            data-value="3"
+          >
+            ★
+          </span>
+
+          <span
+            class="star"
+            data-value="4"
+          >
+            ★
+          </span>
+
+          <span
+            class="star"
+            data-value="5"
+          >
+            ★
+          </span>
 
         </div>
 
@@ -1741,7 +2059,9 @@ textarea {
 
       <div class="field">
 
-        <label>備註</label>
+        <label>
+          備註
+        </label>
 
         <textarea id="foodNote"></textarea>
 
@@ -1775,6 +2095,7 @@ textarea {
         🍽️ 美食紀錄
       </div>
 
+
       <div class="field">
 
         <input
@@ -1784,6 +2105,7 @@ textarea {
         >
 
       </div>
+
 
       <div id="foodList">
 
@@ -1842,7 +2164,9 @@ textarea {
 
         <div class="field">
 
-          <label>日期</label>
+          <label>
+            日期
+          </label>
 
           <input
             id="expenseDate"
@@ -1854,7 +2178,9 @@ textarea {
 
         <div class="field">
 
-          <label>時間</label>
+          <label>
+            時間
+          </label>
 
           <input
             id="expenseTime"
@@ -1870,16 +2196,35 @@ textarea {
 
         <div class="field">
 
-          <label>分類</label>
+          <label>
+            分類
+          </label>
 
           <select id="expenseCategory">
 
-            <option value="food">餐飲</option>
-            <option value="transport">交通</option>
-            <option value="shopping">購物</option>
-            <option value="hotel">住宿</option>
-            <option value="ticket">門票</option>
-            <option value="other">其他</option>
+            <option value="food">
+              餐飲
+            </option>
+
+            <option value="transport">
+              交通
+            </option>
+
+            <option value="shopping">
+              購物
+            </option>
+
+            <option value="hotel">
+              住宿
+            </option>
+
+            <option value="ticket">
+              門票
+            </option>
+
+            <option value="other">
+              其他
+            </option>
 
           </select>
 
@@ -1888,7 +2233,9 @@ textarea {
 
         <div class="field">
 
-          <label>子分類</label>
+          <label>
+            子分類
+          </label>
 
           <input id="expenseSubcategory">
 
@@ -1899,7 +2246,9 @@ textarea {
 
       <div class="field">
 
-        <label>標題</label>
+        <label>
+          標題
+        </label>
 
         <input id="expenseTitle">
 
@@ -1910,7 +2259,9 @@ textarea {
 
         <div class="field">
 
-          <label>金額</label>
+          <label>
+            金額
+          </label>
 
           <input
             id="expenseAmount"
@@ -1924,14 +2275,27 @@ textarea {
 
         <div class="field">
 
-          <label>幣別</label>
+          <label>
+            幣別
+          </label>
 
           <select id="expenseCurrency">
 
-            <option value="JPY">JPY</option>
-            <option value="TWD">TWD</option>
-            <option value="CNY">CNY</option>
-            <option value="USD">USD</option>
+            <option value="JPY">
+              JPY
+            </option>
+
+            <option value="TWD">
+              TWD
+            </option>
+
+            <option value="CNY">
+              CNY
+            </option>
+
+            <option value="USD">
+              USD
+            </option>
 
           </select>
 
@@ -1944,7 +2308,9 @@ textarea {
 
         <div class="field">
 
-          <label>付款方式</label>
+          <label>
+            付款方式
+          </label>
 
           <input
             id="expensePaymentMethod"
@@ -1956,7 +2322,9 @@ textarea {
 
         <div class="field">
 
-          <label>付款人</label>
+          <label>
+            付款人
+          </label>
 
           <input id="expensePayer">
 
@@ -1967,7 +2335,9 @@ textarea {
 
       <div class="field">
 
-        <label>備註</label>
+        <label>
+          備註
+        </label>
 
         <textarea id="expenseNote"></textarea>
 
@@ -2000,6 +2370,7 @@ textarea {
       <div class="card-title">
         💳 消費紀錄
       </div>
+
 
       <div id="expenseList">
 
@@ -2039,7 +2410,9 @@ textarea {
 
       <div class="field">
 
-        <label>旅程名稱</label>
+        <label>
+          旅程名稱
+        </label>
 
         <input
           id="tripName"
@@ -2053,7 +2426,9 @@ textarea {
 
         <div class="field">
 
-          <label>開始日期</label>
+          <label>
+            開始日期
+          </label>
 
           <input
             id="tripStart"
@@ -2065,7 +2440,9 @@ textarea {
 
         <div class="field">
 
-          <label>結束日期</label>
+          <label>
+            結束日期
+          </label>
 
           <input
             id="tripEnd"
@@ -2079,7 +2456,9 @@ textarea {
 
       <div class="field">
 
-        <label>備註</label>
+        <label>
+          備註
+        </label>
 
         <textarea id="tripNote"></textarea>
 
@@ -2113,6 +2492,7 @@ textarea {
         我的旅程
       </div>
 
+
       <div id="tripList">
 
         <div class="empty">
@@ -2134,6 +2514,78 @@ textarea {
     id="syncPanel"
     class="panel"
   >
+
+
+    <div class="card">
+
+      <div class="card-title">
+        ☁️ D1 同步設定
+      </div>
+
+
+      <div class="sync-setting-card">
+
+        <div class="sync-setting-row">
+
+          <div class="sync-setting-main">
+
+            <div class="sync-setting-title">
+              同步 D1
+            </div>
+
+            <div
+              id="autoSyncDesc"
+              class="sync-setting-desc"
+            >
+              開啟：Local 儲存後自動同步 D1。
+            </div>
+
+          </div>
+
+
+          <label class="toggle">
+
+            <input
+              id="autoSyncToggle"
+              type="checkbox"
+              checked
+            >
+
+            <span class="toggle-slider"></span>
+
+          </label>
+
+        </div>
+
+      </div>
+
+
+      <button
+        id="manualSyncButton"
+        class="btn btn-primary"
+        type="button"
+      >
+        🔄 立即同步 D1
+      </button>
+
+
+      <div class="small">
+
+        關閉「同步 D1」後，
+        GPS、地址查詢與附近地點仍可使用網路。
+
+        <br>
+
+        新增、修改、刪除會先留在 Local，
+        顯示「待同步」。
+
+        <br>
+
+        按「立即同步 D1」即可強制手動同步。
+
+      </div>
+
+    </div>
 
 
     <div class="card">
@@ -2209,15 +2661,6 @@ textarea {
         </div>
 
       </div>
-
-
-      <button
-        id="manualSyncButton"
-        class="btn btn-primary"
-        type="button"
-      >
-        🔄 立即同步
-      </button>
 
 
       <div
@@ -2351,7 +2794,7 @@ textarea {
 
 
       <div class="small">
-        匯入後先寫入 IndexedDB，再由同步引擎送往 D1。
+        匯入後先寫入 IndexedDB，再依「同步 D1」設定處理。
       </div>
 
     </div>
@@ -2401,6 +2844,7 @@ textarea {
         取消
       </button>
 
+
       <button
         id="confirmOk"
         class="btn btn-red"
@@ -2430,10 +2874,7 @@ textarea {
 <script>
 
 /* =========================================================
-   GLOBAL STARTUP ERROR MONITOR
-
-   這段故意放最前面。
-   後續任何 JS 啟動錯誤都直接顯示在畫面。
+   STARTUP ERROR MONITOR
 ========================================================= */
 
 function showStartupError(
@@ -2470,9 +2911,7 @@ function showStartupError(
 
 window.addEventListener(
   "error",
-  function(
-    event
-  ) {
+  event => {
 
     const detail =
 
@@ -2506,9 +2945,7 @@ window.addEventListener(
 
 window.addEventListener(
   "unhandledrejection",
-  function(
-    event
-  ) {
+  event => {
 
     const reason =
 
@@ -2535,7 +2972,7 @@ window.addEventListener(
 ========================================================= */
 
 const APP_VERSION =
-  "2.1.1";
+  "2.1.2";
 
 const EXPECTED_API_VERSION =
   "2.1.1";
@@ -2545,14 +2982,14 @@ const API_BASE =
 
 
 /* =========================================================
-   INDEXEDDB
+   INDEXEDDB CONFIG
 ========================================================= */
 
 const DB_NAME =
   "TravelToolkitDB";
 
 const DB_VERSION =
-  3;
+  4;
 
 const STORE_TRIPS =
   "trips";
@@ -2593,12 +3030,14 @@ let foodRecords =
 let expenses =
   [];
 
-
 let footprintLocation =
   null;
 
 let footprintSelectedType =
   "other";
+
+let nearbyPlaces =
+  [];
 
 let foodLocation =
   null;
@@ -2612,8 +3051,17 @@ let foodRating =
 let syncRunning =
   false;
 
+let autoSyncEnabled =
+  true;
+
 let toastTimer =
   null;
+
+let footprintMap =
+  null;
+
+let footprintMapLayers =
+  [];
 
 
 /* =========================================================
@@ -2623,43 +3071,67 @@ let toastTimer =
 const FOOTPRINT_TYPES = {
 
   attraction: {
-    icon: "📷",
-    label: "景點"
+    icon:
+      "📷",
+
+    label:
+      "景點"
   },
 
   restaurant: {
-    icon: "🍜",
-    label: "餐廳"
+    icon:
+      "🍜",
+
+    label:
+      "餐廳"
   },
 
   hotel: {
-    icon: "🏨",
-    label: "飯店"
+    icon:
+      "🏨",
+
+    label:
+      "飯店"
   },
 
   station: {
-    icon: "🚉",
-    label: "車站"
+    icon:
+      "🚉",
+
+    label:
+      "車站"
   },
 
   airport: {
-    icon: "✈️",
-    label: "機場"
+    icon:
+      "✈️",
+
+    label:
+      "機場"
   },
 
   shopping: {
-    icon: "🛍️",
-    label: "購物"
+    icon:
+      "🛍️",
+
+    label:
+      "購物"
   },
 
   rest: {
-    icon: "☕",
-    label: "休息"
+    icon:
+      "☕",
+
+    label:
+      "休息"
   },
 
   other: {
-    icon: "📍",
-    label: "其他"
+    icon:
+      "📍",
+
+    label:
+      "其他"
   }
 
 };
@@ -2892,7 +3364,7 @@ function parseSyncTime(
 }
 
  /* =========================================================
-   API
+   API HELPER
 ========================================================= */
 
 async function api(
@@ -3236,15 +3708,13 @@ function dbPut(
         );
 
 
-      const store =
-        transaction.objectStore(
+      transaction
+        .objectStore(
           storeName
+        )
+        .put(
+          value
         );
-
-
-      store.put(
-        value
-      );
 
 
       transaction.oncomplete =
@@ -3294,21 +3764,17 @@ function dbGet(
       reject
     ) => {
 
-      const transaction =
+      const request =
         db.transaction(
           storeName,
           "readonly"
+        )
+        .objectStore(
+          storeName
+        )
+        .get(
+          key
         );
-
-
-      const request =
-        transaction
-          .objectStore(
-            storeName
-          )
-          .get(
-            key
-          );
 
 
       request.onsuccess =
@@ -3348,19 +3814,15 @@ function dbGetAll(
       reject
     ) => {
 
-      const transaction =
+      const request =
         db.transaction(
           storeName,
           "readonly"
-        );
-
-
-      const request =
-        transaction
-          .objectStore(
-            storeName
-          )
-          .getAll();
+        )
+        .objectStore(
+          storeName
+        )
+        .getAll();
 
 
       request.onsuccess =
@@ -3510,7 +3972,7 @@ function entityStoreName(
 
 
 /* =========================================================
-   LOCAL RECORD METADATA
+   LOCAL RECORD NORMALIZE
 ========================================================= */
 
 function normalizeLocalRecord(
@@ -3561,7 +4023,7 @@ function normalizeLocalRecord(
 
 
 /* =========================================================
-   QUEUE
+   SYNC QUEUE
 ========================================================= */
 
 async function queueSync(
@@ -3753,7 +4215,7 @@ async function saveLocalRecord(
 
 
 /* =========================================================
-   LOCAL SOFT DELETE
+   SOFT DELETE
 ========================================================= */
 
 async function softDeleteLocalRecord(
@@ -3815,7 +4277,7 @@ async function softDeleteLocalRecord(
 
 
 /* =========================================================
-   FIND LOCAL BY CLOUD ID
+   FIND BY CLOUD ID
 ========================================================= */
 
 async function findLocalByCloudId(
@@ -3855,10 +4317,6 @@ async function findLocalByCloudId(
 }
 
 
-/* =========================================================
-   CLOUD ID → CLIENT UID
-========================================================= */
-
 async function findClientUidByCloudId(
   storeName,
   cloudId
@@ -3878,7 +4336,7 @@ async function findClientUidByCloudId(
 
 
 /* =========================================================
-   SERVER → LOCAL RECORD
+   SERVER → LOCAL
 ========================================================= */
 
 async function serverRecordToLocal(
@@ -3906,7 +4364,8 @@ async function serverRecordToLocal(
 
 
   if (
-    entity !== "trips"
+    entity !==
+    "trips"
   ) {
 
     local.trip_client_uid =
@@ -3954,7 +4413,7 @@ async function serverRecordToLocal(
 
 
 /* =========================================================
-   RECONCILE CANONICAL UID
+   CANONICAL UID RECONCILE
 ========================================================= */
 
 async function reconcileCanonicalUid(
@@ -3981,11 +4440,6 @@ async function reconcileCanonicalUid(
   const canonicalUid =
     serverRecord.client_uid;
 
-
-  /*
-    正常：
-    UID 沒變。
-  */
 
   if (
     canonicalUid ===
@@ -4015,11 +4469,6 @@ async function reconcileCanonicalUid(
 
   }
 
-
-  /*
-    舊 backup / 舊 Local UID
-    與 D1 canonical UID 不同。
-  */
 
   const temporary =
     await dbGet(
@@ -4084,7 +4533,7 @@ async function reconcileCanonicalUid(
 
 
   /*
-    修正 Local 關聯。
+    修關聯
   */
 
   if (
@@ -4092,18 +4541,13 @@ async function reconcileCanonicalUid(
     "trips"
   ) {
 
-    const relationStores = [
-
-      STORE_FOOTPRINTS,
-      STORE_FOOD,
-      STORE_EXPENSES
-
-    ];
-
-
     for (
       const relationStore of
-      relationStores
+      [
+        STORE_FOOTPRINTS,
+        STORE_FOOD,
+        STORE_EXPENSES
+      ]
     ) {
 
       const records =
@@ -4261,12 +4705,6 @@ async function mergeServerRecord(
     );
 
 
-  /*
-    Local 有未同步修改，
-    而且比 Server 新：
-    Local 保留。
-  */
-
   if (
     existing &&
     [
@@ -4323,7 +4761,7 @@ async function mergeServerRecord(
 
 
 /* =========================================================
-   PREPARE SYNC DATA
+   PREPARE SYNC PAYLOAD
 ========================================================= */
 
 function prepareSyncData(
@@ -4871,10 +5309,6 @@ async function pullCloudChanges() {
     );
 
 
-  /*
-    Trips 一定要先 merge。
-  */
-
   for (
     const record of
     result.trips ||
@@ -4932,7 +5366,7 @@ async function pullCloudChanges() {
 
 
   /*
-    Footprint 前後站第二輪修復。
+    第二輪修 Footprint previous relation
   */
 
   for (
@@ -4973,7 +5407,7 @@ async function pullCloudChanges() {
 
 
   /*
-    Expense food source 第二輪修復。
+    第二輪修 Expense food source
   */
 
   for (
@@ -5271,6 +5705,47 @@ function updateSyncHeader(
 
 
 /* =========================================================
+   AUTO SYNC SETTING
+========================================================= */
+
+function updateAutoSyncDescription() {
+
+  document
+    .getElementById(
+      "autoSyncDesc"
+    )
+    .textContent =
+
+    autoSyncEnabled
+      ? "開啟：Local 儲存後自動同步 D1。"
+      : "關閉：只存 Local；GPS、地址與附近地點仍可使用網路。";
+
+}
+
+
+async function loadAutoSyncSetting() {
+
+  autoSyncEnabled =
+    await getMeta(
+      "auto_sync_enabled",
+      true
+    );
+
+
+  document
+    .getElementById(
+      "autoSyncToggle"
+    )
+    .checked =
+    autoSyncEnabled;
+
+
+  updateAutoSyncDescription();
+
+}
+
+
+/* =========================================================
    SYNC UI
 ========================================================= */
 
@@ -5357,6 +5832,18 @@ async function updateSyncStatusUI() {
 
   }
   else if (
+    !autoSyncEnabled &&
+    counts.pending >
+    0
+  ) {
+
+    updateSyncHeader(
+      "pending",
+      `${counts.pending} 筆待同步`
+    );
+
+  }
+  else if (
     counts.error >
     0
   ) {
@@ -5382,7 +5869,9 @@ async function updateSyncStatusUI() {
 
     updateSyncHeader(
       "ok",
-      "已同步"
+      autoSyncEnabled
+        ? "已同步"
+        : "Local 模式"
     );
 
   }
@@ -5404,6 +5893,7 @@ async function testCloudConnection() {
       "error",
       "D1 離線"
     );
+
 
     return false;
 
@@ -5466,15 +5956,36 @@ async function testCloudConnection() {
 
 /* =========================================================
    FULL SYNC
+
+   force = true：
+   即使 autoSyncEnabled = false
+   也照樣手動同步。
 ========================================================= */
 
 async function syncNow(
   options = {}
 ) {
 
+  const force =
+    options.force ===
+    true;
+
+
   if (
     syncRunning
   ) {
+
+    return;
+
+  }
+
+
+  if (
+    !force &&
+    !autoSyncEnabled
+  ) {
+
+    await updateSyncStatusUI();
 
     return;
 
@@ -5506,17 +6017,16 @@ async function syncNow(
 
   try {
 
-    /*
-      先 push Local，
-      再 pull Cloud，
-      再 retry push。
-    */
-
     await pushPendingChanges();
 
 
     await pullCloudChanges();
 
+
+    /*
+      第二輪：
+      dependency 補齊後再 retry。
+    */
 
     await pushPendingChanges();
 
@@ -5532,7 +6042,9 @@ async function syncNow(
 
     updateSyncHeader(
       "ok",
-      "同步完成"
+      autoSyncEnabled
+        ? "同步完成"
+        : "手動同步完成"
     );
 
 
@@ -5541,7 +6053,7 @@ async function syncNow(
     ) {
 
       showToast(
-        "☁️ 同步完成"
+        "☁️ D1 同步完成"
       );
 
     }
@@ -5571,7 +6083,7 @@ async function syncNow(
     ) {
 
       showMessage(
-        "同步失敗，但本機資料仍保留：" +
+        "同步失敗，但 Local 資料仍已保留：" +
         error.message,
         "error"
       );
@@ -5590,7 +6102,7 @@ async function syncNow(
 
 
 /* =========================================================
-   SAVE + IMMEDIATE SYNC
+   SAVE + OPTIONAL AUTO SYNC
 ========================================================= */
 
 async function saveAndSync(
@@ -5614,13 +6126,21 @@ async function saveAndSync(
   await updateSyncStatusUI();
 
 
+  /*
+    只有自動同步開啟時才背景送 D1。
+  */
+
   if (
-    navigator.onLine
+    navigator.onLine &&
+    autoSyncEnabled
   ) {
 
     setTimeout(
-      () =>
-        syncNow(),
+      () => {
+
+        syncNow();
+
+      },
       0
     );
 
@@ -5633,7 +6153,7 @@ async function saveAndSync(
 
 
 /* =========================================================
-   DELETE + IMMEDIATE SYNC
+   DELETE + OPTIONAL AUTO SYNC
 ========================================================= */
 
 async function deleteAndSync(
@@ -5657,12 +6177,16 @@ async function deleteAndSync(
 
 
   if (
-    navigator.onLine
+    navigator.onLine &&
+    autoSyncEnabled
   ) {
 
     setTimeout(
-      () =>
-        syncNow(),
+      () => {
+
+        syncNow();
+
+      },
       0
     );
 
@@ -5761,50 +6285,67 @@ async function recoverInterruptedSync() {
 
 
 /* =========================================================
-   NETWORK EVENTS
+   AUTO SYNC TOGGLE EVENT
 ========================================================= */
 
-window.addEventListener(
-  "online",
-  async () => {
+document
+  .getElementById(
+    "autoSyncToggle"
+  )
+  .addEventListener(
+    "change",
+    async event => {
 
-    updateNetworkUI();
+      autoSyncEnabled =
+        event.target.checked;
 
 
-    const cloudOK =
-      await testCloudConnection();
+      await setMeta(
+        "auto_sync_enabled",
+        autoSyncEnabled
+      );
 
 
-    if (
-      cloudOK
-    ) {
+      updateAutoSyncDescription();
 
-      setTimeout(
-        () =>
-          syncNow(),
-        400
+
+      await updateSyncStatusUI();
+
+
+      if (
+        autoSyncEnabled &&
+        navigator.onLine
+      ) {
+
+        /*
+          從 Local 模式重新打開，
+          自動補送 pending。
+        */
+
+        setTimeout(
+          () => {
+
+            syncNow();
+
+          },
+          200
+        );
+
+      }
+
+
+      showToast(
+
+        autoSyncEnabled
+
+          ? "☁️ 已開啟 D1 自動同步"
+
+          : "📱 已切換為 Local 儲存模式"
+
       );
 
     }
-
-  }
-);
-
-
-window.addEventListener(
-  "offline",
-  () => {
-
-    updateNetworkUI();
-
-
-    updateCloudHeader(
-      "error",
-      "D1 離線"
-    );
-
-  }
-);
+  );
 
 
 /* =========================================================
@@ -5835,9 +6376,17 @@ document
 
       try {
 
+        /*
+          force = true
+          不理會同步 D1 開關。
+        */
+
         await syncNow(
           {
             manual:
+              true,
+
+            force:
               true
           }
         );
@@ -5850,12 +6399,68 @@ document
 
 
         button.textContent =
-          "🔄 立即同步";
+          "🔄 立即同步 D1";
 
       }
 
     }
   );
+
+
+/* =========================================================
+   NETWORK EVENTS
+========================================================= */
+
+window.addEventListener(
+  "online",
+  async () => {
+
+    updateNetworkUI();
+
+
+    const cloudOK =
+      await testCloudConnection();
+
+
+    /*
+      只有 Auto Sync ON
+      才在網路恢復時自動補同步。
+    */
+
+    if (
+      cloudOK &&
+      autoSyncEnabled
+    ) {
+
+      setTimeout(
+        () => {
+
+          syncNow();
+
+        },
+        400
+      );
+
+    }
+
+  }
+);
+
+
+window.addEventListener(
+  "offline",
+  () => {
+
+    updateNetworkUI();
+
+
+    updateCloudHeader(
+      "error",
+      "D1 離線"
+    );
+
+  }
+);
 /* =========================================================
    UI HELPERS
 ========================================================= */
@@ -5957,8 +6562,11 @@ function showMessage(
 
   window.scrollTo(
     {
-      top: 0,
-      behavior: "smooth"
+      top:
+        0,
+
+      behavior:
+        "smooth"
     }
   );
 
@@ -6522,14 +7130,6 @@ function renderTripSelectors() {
    MAP INIT
 ========================================================= */
 
-let footprintMap =
-  null;
-
-
-let footprintMapLayers =
-  [];
-
-
 function initializeMap() {
 
   if (
@@ -6716,8 +7316,874 @@ async function reverseGeocode(
 
 
 /* =========================================================
+   NEARBY PLACE DISTANCE
+========================================================= */
+
+function haversineMeters(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+) {
+
+  const earthRadius =
+    6371000;
+
+
+  const toRad =
+    value =>
+      value *
+      Math.PI /
+      180;
+
+
+  const dLat =
+    toRad(
+      lat2 -
+      lat1
+    );
+
+
+  const dLon =
+    toRad(
+      lon2 -
+      lon1
+    );
+
+
+  const a =
+
+    Math.sin(
+      dLat /
+      2
+    ) ** 2 +
+
+    Math.cos(
+      toRad(
+        lat1
+      )
+    ) *
+
+    Math.cos(
+      toRad(
+        lat2
+      )
+    ) *
+
+    Math.sin(
+      dLon /
+      2
+    ) ** 2;
+
+
+  return (
+    2 *
+    earthRadius *
+    Math.atan2(
+      Math.sqrt(
+        a
+      ),
+      Math.sqrt(
+        1 -
+        a
+      )
+    )
+  );
+
+}
+
+
+/* =========================================================
+   NEARBY TYPE INFERENCE
+========================================================= */
+
+function inferNearbyType(
+  tags = {}
+) {
+
+  const amenity =
+    tags.amenity ||
+    "";
+
+
+  const shop =
+    tags.shop ||
+    "";
+
+
+  const tourism =
+    tags.tourism ||
+    "";
+
+
+  const railway =
+    tags.railway ||
+    "";
+
+
+  const publicTransport =
+    tags.public_transport ||
+    "";
+
+
+  const aeroway =
+    tags.aeroway ||
+    "";
+
+
+  if (
+    [
+      "restaurant",
+      "fast_food",
+      "food_court"
+    ]
+    .includes(
+      amenity
+    )
+  ) {
+
+    return "restaurant";
+
+  }
+
+
+  if (
+    [
+      "cafe",
+      "ice_cream",
+      "bar",
+      "pub"
+    ]
+    .includes(
+      amenity
+    )
+  ) {
+
+    return "rest";
+
+  }
+
+
+  if (
+    [
+      "hotel",
+      "hostel",
+      "guest_house",
+      "motel"
+    ]
+    .includes(
+      tourism
+    )
+  ) {
+
+    return "hotel";
+
+  }
+
+
+  if (
+    railway ||
+    publicTransport
+  ) {
+
+    return "station";
+
+  }
+
+
+  if (
+    aeroway
+  ) {
+
+    return "airport";
+
+  }
+
+
+  if (
+    shop
+  ) {
+
+    return "shopping";
+
+  }
+
+
+  if (
+    [
+      "attraction",
+      "museum",
+      "gallery",
+      "viewpoint",
+      "theme_park",
+      "zoo"
+    ]
+    .includes(
+      tourism
+    )
+  ) {
+
+    return "attraction";
+
+  }
+
+
+  return "other";
+
+}
+
+
+/* =========================================================
+   NEARBY DISPLAY NAME
+========================================================= */
+
+function nearbyDisplayName(
+  tags = {}
+) {
+
+  return (
+
+    tags[
+      "name:zh-Hant"
+    ] ||
+
+    tags[
+      "name:zh"
+    ] ||
+
+    tags[
+      "name:ja"
+    ] ||
+
+    tags.name ||
+
+    tags.brand ||
+
+    tags.operator ||
+
+    "未命名地點"
+
+  );
+
+}
+
+
+/* =========================================================
+   NEARBY CATEGORY TEXT
+========================================================= */
+
+function nearbyCategoryText(
+  type
+) {
+
+  return (
+    FOOTPRINT_TYPES[
+      type
+    ]?.label ||
+    "其他"
+  );
+
+}
+
+
+/* =========================================================
+   OVERPASS QUERY
+========================================================= */
+
+async function fetchOverpassNearby(
+  latitude,
+  longitude
+) {
+
+  const query = `
+
+[out:json][timeout:16];
+
+(
+
+  nwr(
+    around:500,
+    ${latitude},
+    ${longitude}
+  )
+  ["amenity"~"restaurant|fast_food|food_court|cafe|ice_cream|bar|pub"];
+
+  nwr(
+    around:500,
+    ${latitude},
+    ${longitude}
+  )
+  ["shop"];
+
+  nwr(
+    around:500,
+    ${latitude},
+    ${longitude}
+  )
+  ["tourism"~"hotel|hostel|guest_house|motel|attraction|museum|gallery|viewpoint|theme_park|zoo"];
+
+  nwr(
+    around:500,
+    ${latitude},
+    ${longitude}
+  )
+  ["railway"];
+
+  nwr(
+    around:500,
+    ${latitude},
+    ${longitude}
+  )
+  ["public_transport"];
+
+  nwr(
+    around:500,
+    ${latitude},
+    ${longitude}
+  )
+  ["aeroway"];
+
+);
+
+out center tags;
+
+  `;
+
+
+  const servers = [
+
+    "https://overpass-api.de/api/interpreter",
+
+    "https://overpass.kumi.systems/api/interpreter"
+
+  ];
+
+
+  let lastError =
+    null;
+
+
+  for (
+    const server of
+    servers
+  ) {
+
+    try {
+
+      const controller =
+        new AbortController();
+
+
+      const timeout =
+        setTimeout(
+          () => {
+
+            controller.abort();
+
+          },
+          18000
+        );
+
+
+      const response =
+        await fetch(
+          server,
+          {
+
+            method:
+              "POST",
+
+            headers: {
+
+              "Content-Type":
+                "application/x-www-form-urlencoded;charset=UTF-8"
+
+            },
+
+            body:
+              "data=" +
+              encodeURIComponent(
+                query
+              ),
+
+            signal:
+              controller.signal
+
+          }
+        );
+
+
+      clearTimeout(
+        timeout
+      );
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          "Overpass HTTP " +
+          response.status
+        );
+
+      }
+
+
+      const result =
+        await response.json();
+
+
+      return (
+        result.elements ||
+        []
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      lastError =
+        error;
+
+    }
+
+  }
+
+
+  throw (
+    lastError ||
+    new Error(
+      "附近地點查詢失敗"
+    )
+  );
+
+}
+
+
+/* =========================================================
+   LOAD NEARBY PLACES
+========================================================= */
+
+async function loadNearbyPlaces(
+  latitude,
+  longitude
+) {
+
+  const wrap =
+    document.getElementById(
+      "nearbyWrap"
+    );
+
+
+  const list =
+    document.getElementById(
+      "nearbyList"
+    );
+
+
+  const status =
+    document.getElementById(
+      "nearbyStatus"
+    );
+
+
+  wrap.style.display =
+    "block";
+
+
+  status.textContent =
+    "搜尋中...";
+
+
+  list.innerHTML = `
+
+    <div
+      class="empty"
+      style="padding:8px"
+    >
+      正在搜尋附近地點...
+    </div>
+
+  `;
+
+
+  try {
+
+    const elements =
+      await fetchOverpassNearby(
+        latitude,
+        longitude
+      );
+
+
+    const seen =
+      new Set();
+
+
+    nearbyPlaces =
+      elements
+        .map(
+          element => {
+
+            const placeLat =
+              element.lat ??
+              element.center?.lat;
+
+
+            const placeLon =
+              element.lon ??
+              element.center?.lon;
+
+
+            if (
+              placeLat ===
+              undefined ||
+              placeLon ===
+              undefined
+            ) {
+
+              return null;
+
+            }
+
+
+            const name =
+              nearbyDisplayName(
+                element.tags ||
+                {}
+              );
+
+
+            const type =
+              inferNearbyType(
+                element.tags ||
+                {}
+              );
+
+
+            const distance =
+              Math.round(
+                haversineMeters(
+
+                  latitude,
+
+                  longitude,
+
+                  placeLat,
+
+                  placeLon
+
+                )
+              );
+
+
+            return {
+
+              id:
+                element.type +
+                "-" +
+                element.id,
+
+              name,
+
+              type,
+
+              distance,
+
+              latitude:
+                placeLat,
+
+              longitude:
+                placeLon,
+
+              tags:
+                element.tags ||
+                {}
+
+            };
+
+          }
+        )
+        .filter(
+          Boolean
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            a.distance -
+            b.distance
+        )
+        .filter(
+          item => {
+
+            const key =
+
+              item.name +
+              "|" +
+              item.type;
+
+
+            if (
+              seen.has(
+                key
+              )
+            ) {
+
+              return false;
+
+            }
+
+
+            seen.add(
+              key
+            );
+
+
+            return true;
+
+          }
+        )
+        .slice(
+          0,
+          10
+        );
+
+
+    renderNearbyPlaces();
+
+
+    status.textContent =
+      nearbyPlaces.length
+        ? `找到 ${nearbyPlaces.length} 個`
+        : "附近沒有可用地點";
+
+  }
+  catch (
+    error
+  ) {
+
+    console.warn(
+      "Nearby query failed:",
+      error
+    );
+
+
+    nearbyPlaces =
+      [];
+
+
+    status.textContent =
+      "查詢失敗";
+
+
+    list.innerHTML = `
+
+      <div
+        class="empty"
+        style="padding:8px"
+      >
+        附近地點暫時無法取得，
+        可直接輸入地點名稱。
+      </div>
+
+    `;
+
+  }
+
+}
+
+
+/* =========================================================
+   RENDER NEARBY
+========================================================= */
+
+function renderNearbyPlaces() {
+
+  const list =
+    document.getElementById(
+      "nearbyList"
+    );
+
+
+  if (
+    !nearbyPlaces.length
+  ) {
+
+    list.innerHTML = `
+
+      <div
+        class="empty"
+        style="padding:8px"
+      >
+        附近沒有可用地點
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  list.innerHTML =
+    nearbyPlaces
+      .map(
+        (
+          place,
+          index
+        ) => `
+
+          <button
+            class="nearby-item"
+            type="button"
+            data-nearby-index="${index}"
+          >
+
+            <div class="nearby-name">
+
+              ${
+                FOOTPRINT_TYPES[
+                  place.type
+                ]?.icon ||
+                "📍"
+              }
+
+              ${escapeHtml(
+                place.name
+              )}
+
+            </div>
+
+
+            <div class="nearby-meta">
+
+              ${escapeHtml(
+                nearbyCategoryText(
+                  place.type
+                )
+              )}
+
+              · 約
+
+              ${place.distance}
+
+              m
+
+            </div>
+
+          </button>
+
+        `
+      )
+      .join(
+        ""
+      );
+
+
+  list
+    .querySelectorAll(
+      ".nearby-item"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            list
+              .querySelectorAll(
+                ".nearby-item"
+              )
+              .forEach(
+                item =>
+                  item
+                    .classList
+                    .remove(
+                      "selected"
+                    )
+              );
+
+
+            button
+              .classList
+              .add(
+                "selected"
+              );
+
+
+            const place =
+              nearbyPlaces[
+                Number(
+                  button.dataset.nearbyIndex
+                )
+              ];
+
+
+            document
+              .getElementById(
+                "footprintPlace"
+              )
+              .value =
+              place.name;
+
+
+            setFootprintType(
+              place.type
+            );
+
+
+            showToast(
+              "📌 已選擇：" +
+              place.name
+            );
+
+          }
+        );
+
+      }
+    );
+
+}
+
+
+/* =========================================================
    FOOTPRINT TYPE SELECT
 ========================================================= */
+
+function setFootprintType(
+  type
+) {
+
+  footprintSelectedType =
+    type ||
+    "other";
+
+
+  document
+    .querySelectorAll(
+      "#footprintTypeGrid .type-btn"
+    )
+    .forEach(
+      button => {
+
+        button
+          .classList
+          .toggle(
+            "active",
+            button.dataset.type ===
+            footprintSelectedType
+          );
+
+      }
+    );
+
+}
+
 
 document
   .querySelectorAll(
@@ -6730,27 +8196,9 @@ document
         "click",
         () => {
 
-          footprintSelectedType =
-            button.dataset.type;
-
-
-          document
-            .querySelectorAll(
-              "#footprintTypeGrid .type-btn"
-            )
-            .forEach(
-              item =>
-                item.classList.remove(
-                  "active"
-                )
-            );
-
-
-          button
-            .classList
-            .add(
-              "active"
-            );
+          setFootprintType(
+            button.dataset.type
+          );
 
         }
       );
@@ -6830,9 +8278,13 @@ document
           `;
 
 
+        /*
+          地址查詢
+        */
+
         try {
 
-          const result =
+          const geo =
             await reverseGeocode(
 
               footprintLocation.latitude,
@@ -6843,7 +8295,7 @@ document
 
 
           if (
-            result.place_name
+            geo.place_name
           ) {
 
             document
@@ -6851,13 +8303,13 @@ document
                 "footprintPlace"
               )
               .value =
-              result.place_name;
+              geo.place_name;
 
           }
 
 
           if (
-            result.address
+            geo.address
           ) {
 
             document
@@ -6865,7 +8317,7 @@ document
                 "footprintAddress"
               )
               .value =
-              result.address;
+              geo.address;
 
           }
 
@@ -6875,7 +8327,7 @@ document
         ) {
 
           console.warn(
-            "reverse geocode failed",
+            "Reverse geocode failed:",
             error
           );
 
@@ -6889,13 +8341,29 @@ document
           footprintMap
             .setView(
               [
+
                 footprintLocation.latitude,
+
                 footprintLocation.longitude
+
               ],
               16
             );
 
         }
+
+
+        /*
+          取得附近 10 個地點
+        */
+
+        await loadNearbyPlaces(
+
+          footprintLocation.latitude,
+
+          footprintLocation.longitude
+
+        );
 
       }
       catch (
@@ -7145,8 +8613,13 @@ document
           null;
 
 
-        footprintSelectedType =
-          "other";
+        nearbyPlaces =
+          [];
+
+
+        setFootprintType(
+          "other"
+        );
 
 
         document
@@ -7182,28 +8655,29 @@ document
 
 
         document
-          .querySelectorAll(
-            "#footprintTypeGrid .type-btn"
+          .getElementById(
+            "nearbyWrap"
           )
-          .forEach(
-            item => {
+          .style.display =
+          "none";
 
-              item
-                .classList
-                .toggle(
-                  "active",
-                  item.dataset.type ===
-                  "other"
-                );
 
-            }
-          );
+        document
+          .getElementById(
+            "nearbyList"
+          )
+          .innerHTML =
+          "";
 
 
         showToast(
-          navigator.onLine
-            ? "📍 已儲存，本機完成並同步中"
-            : "📍 已儲存在本機，等待同步"
+
+          autoSyncEnabled
+
+            ? "📍 已存 Local，正在同步 D1"
+
+            : "📍 已存 Local，等待手動同步"
+
         );
 
       }
@@ -7264,7 +8738,9 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>旅程</label>
+            <label>
+              旅程
+            </label>
 
             <select id="footprintEditTrip">
             </select>
@@ -7274,7 +8750,9 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>類型</label>
+            <label>
+              類型
+            </label>
 
             <select id="footprintEditType">
 
@@ -7294,7 +8772,9 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>地點</label>
+            <label>
+              地點
+            </label>
 
             <input id="footprintEditPlace">
 
@@ -7303,7 +8783,9 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>地址</label>
+            <label>
+              地址
+            </label>
 
             <input id="footprintEditAddress">
 
@@ -7312,7 +8794,9 @@ function ensureFootprintEditModal() {
 
           <div class="field">
 
-            <label>備註</label>
+            <label>
+              備註
+            </label>
 
             <textarea id="footprintEditNote"></textarea>
 
@@ -8055,31 +9539,26 @@ function renderFootprints() {
     mapPoints.length
   ) {
 
-    footprintMap
-      .fitBounds(
-        L.latLngBounds(
-          mapPoints
-        ),
-        {
-          padding:
-            [
-              30,
-              30
-            ],
+    footprintMap.fitBounds(
+      L.latLngBounds(
+        mapPoints
+      ),
+      {
+        padding:
+          [
+            30,
+            30
+          ],
 
-          maxZoom:
-            16
-        }
-      );
+        maxZoom:
+          16
+      }
+    );
 
   }
 
 }
 
-
-/* =========================================================
-   FOOTPRINT SEARCH
-========================================================= */
 
 document
   .getElementById(
@@ -8219,7 +9698,7 @@ document
 
         try {
 
-          const result =
+          const geo =
             await reverseGeocode(
 
               foodLocation.latitude,
@@ -8230,32 +9709,32 @@ document
 
 
           foodAddressDetails =
-            result.address_details ||
+            geo.address_details ||
             null;
 
 
-          const addressBox =
+          const box =
             document.getElementById(
               "foodAddressBox"
             );
 
 
           if (
-            result.address
+            geo.address
           ) {
 
-            addressBox.textContent =
-              result.address;
+            box.textContent =
+              geo.address;
 
 
-            addressBox.style.display =
+            box.style.display =
               "block";
 
           }
 
 
           if (
-            result.place_name &&
+            geo.place_name &&
             !document
               .getElementById(
                 "foodShop"
@@ -8268,7 +9747,7 @@ document
                 "foodShop"
               )
               .value =
-              result.place_name;
+              geo.place_name;
 
           }
 
@@ -8278,7 +9757,7 @@ document
         ) {
 
           console.warn(
-            "food reverse geocode failed",
+            "Food reverse geocode failed:",
             error
           );
 
@@ -8433,17 +9912,17 @@ function resetFoodForm() {
     "尚未取得 GPS";
 
 
-  const addressBox =
+  const box =
     document.getElementById(
       "foodAddressBox"
     );
 
 
-  addressBox.textContent =
+  box.textContent =
     "";
 
 
-  addressBox.style.display =
+  box.style.display =
     "none";
 
 }
@@ -8673,11 +10152,7 @@ document
 
 
       /*
-        Food → Expense
-
-        Local-first：
-        先建立 Local expense，
-        再由 sync engine 上 D1。
+        美食 → 消費
       */
 
       const syncExpense =
@@ -8787,9 +10262,13 @@ document
 
 
       showToast(
-        navigator.onLine
-          ? "🍜 已儲存，本機完成並同步中"
-          : "🍜 已儲存在本機，等待同步"
+
+        autoSyncEnabled
+
+          ? "🍜 已存 Local，正在同步 D1"
+
+          : "🍜 已存 Local，等待手動同步"
+
       );
 
     }
@@ -9042,17 +10521,16 @@ function editFood(
 
   window.scrollTo(
     {
-      top: 0,
-      behavior: "smooth"
+      top:
+        0,
+
+      behavior:
+        "smooth"
     }
   );
 
 }
 
-
-/* =========================================================
-   CANCEL FOOD EDIT
-========================================================= */
 
 document
   .getElementById(
@@ -9709,9 +11187,13 @@ document
 
 
       showToast(
-        navigator.onLine
-          ? "💰 已儲存，本機完成並同步中"
-          : "💰 已儲存在本機，等待同步"
+
+        autoSyncEnabled
+
+          ? "💰 已存 Local，正在同步 D1"
+
+          : "💰 已存 Local，等待手動同步"
+
       );
 
     }
@@ -9880,17 +11362,16 @@ function editExpense(
 
   window.scrollTo(
     {
-      top: 0,
-      behavior: "smooth"
+      top:
+        0,
+
+      behavior:
+        "smooth"
     }
   );
 
 }
 
-
-/* =========================================================
-   CANCEL EXPENSE
-========================================================= */
 
 document
   .getElementById(
@@ -10338,9 +11819,13 @@ document
 
 
       showToast(
-        navigator.onLine
-          ? "🧳 已儲存，本機完成並同步中"
-          : "🧳 已儲存在本機，等待同步"
+
+        autoSyncEnabled
+
+          ? "🧳 已存 Local，正在同步 D1"
+
+          : "🧳 已存 Local，等待手動同步"
+
       );
 
     }
@@ -10434,8 +11919,11 @@ function editTrip(
 
   window.scrollTo(
     {
-      top: 0,
-      behavior: "smooth"
+      top:
+        0,
+
+      behavior:
+        "smooth"
     }
   );
 
@@ -10685,8 +12173,10 @@ function renderTrips() {
                 <br>
 
                 📍 ${footprintCount}
-               　🍜 ${foodCount}
-               　💰 ${expenseCount}
+                　
+                🍜 ${foodCount}
+                　
+                💰 ${expenseCount}
 
               </div>
 
@@ -10738,7 +12228,7 @@ function renderTrips() {
 
 
 /* =========================================================
-   LOCAL COUNTS
+   LOCAL COUNT UI
 ========================================================= */
 
 function updateLocalCountUI() {
@@ -10864,7 +12354,7 @@ function importedRecordIsNewer(
 
 
 /* =========================================================
-   IMPORT ONE RECORD
+   IMPORT ONE ENTITY RECORD
 ========================================================= */
 
 async function importEntityRecord(
@@ -10904,7 +12394,11 @@ async function importEntityRecord(
 
   /*
     舊 Travel Toolkit backup：
-    id 視為 D1 cloud id。
+
+    id = D1 cloud id
+
+    如果 Local 已經有同一個 cloud_id，
+    直接沿用 Local 的 canonical client_uid。
   */
 
   if (
@@ -10941,6 +12435,11 @@ async function importEntityRecord(
 
   }
 
+
+  /*
+    Existing 比匯入資料新：
+    不覆蓋。
+  */
 
   if (
     existing &&
@@ -10988,6 +12487,11 @@ async function importEntityRecord(
 
   };
 
+
+  /*
+    D1 integer id
+    不作為 IndexedDB primary key。
+  */
 
   delete record.id;
 
@@ -11070,7 +12574,7 @@ async function exportLocalBackup() {
         APP_VERSION,
 
       backup_version:
-        3,
+        4,
 
       architecture:
         "local-first",
@@ -11078,11 +12582,24 @@ async function exportLocalBackup() {
       exported_at:
         nowISO(),
 
+      settings: {
+
+        auto_sync_enabled:
+          autoSyncEnabled
+
+      },
+
       sync_metadata: {
 
         last_sync_server_time:
           await getMeta(
             "last_sync_server_time",
+            null
+          ),
+
+        last_sync_success:
+          await getMeta(
+            "last_sync_success",
             null
           )
 
@@ -11215,8 +12732,7 @@ async function importLocalBackup() {
 
 
   const file =
-    input.files &&
-    input.files[0];
+    input.files?.[0];
 
 
   if (
@@ -11331,8 +12847,17 @@ async function importLocalBackup() {
         importExpenses.length +
         "\n\n" +
 
-        "會先合併到 Local IndexedDB，" +
-        "再由同步引擎與 D1 合併。"
+        "資料會先合併至 Local IndexedDB。" +
+
+        "\n\n" +
+
+        (
+          autoSyncEnabled
+
+            ? "目前 D1 自動同步為開啟，匯入後會自動同步。"
+
+            : "目前 D1 自動同步為關閉，匯入後會保持待同步，直到你按「立即同步 D1」。"
+        )
 
       );
 
@@ -11346,6 +12871,11 @@ async function importLocalBackup() {
     }
 
 
+    /*
+      舊版 Travel Toolkit
+      可將 id 視為 D1 cloud id。
+    */
+
     const cloudAware =
 
       data.app ===
@@ -11355,18 +12885,22 @@ async function importLocalBackup() {
         data.backup_version ||
         0
       ) <=
-      2;
+      3;
 
 
-    const tripMap =
+    /*
+      舊 ID → client_uid 對照
+    */
+
+    const importedTripIdMap =
       new Map();
 
 
-    const footprintMap =
+    const importedFootprintIdMap =
       new Map();
 
 
-    const foodMap =
+    const importedFoodIdMap =
       new Map();
 
 
@@ -11437,7 +12971,7 @@ async function importLocalBackup() {
         imported
       ) {
 
-        tripMap.set(
+        importedTripIdMap.set(
           String(
             source.id
           ),
@@ -11469,7 +13003,7 @@ async function importLocalBackup() {
       ) {
 
         tripClientUid =
-          tripMap.get(
+          importedTripIdMap.get(
             String(
               source.trip_id
             )
@@ -11494,11 +13028,6 @@ async function importLocalBackup() {
           source.previous_client_uid ||
           null,
 
-        place_name:
-          source.place_name ??
-          source.place ??
-          "未命名地點",
-
         recorded_at:
           source.recorded_at ??
           source.timestamp ??
@@ -11514,8 +13043,29 @@ async function importLocalBackup() {
           source.gmtOffset ??
           null,
 
+        latitude:
+          source.latitude ??
+          null,
+
+        longitude:
+          source.longitude ??
+          null,
+
         accuracy:
           source.accuracy ??
+          null,
+
+        address:
+          source.address ??
+          null,
+
+        place_name:
+          source.place_name ??
+          source.place ??
+          "未命名地點",
+
+        note:
+          source.note ??
           null,
 
         type:
@@ -11554,7 +13104,7 @@ async function importLocalBackup() {
         imported
       ) {
 
-        footprintMap.set(
+        importedFootprintIdMap.set(
           String(
             source.id
           ),
@@ -11566,9 +13116,11 @@ async function importLocalBackup() {
     }
 
 
-    /*
-      Footprint 第二輪修 previous relation。
-    */
+    /* =====================================================
+       FOOTPRINT SECOND PASS
+
+       previous_record_id → previous_client_uid
+    ===================================================== */
 
     for (
       const source of
@@ -11585,7 +13137,7 @@ async function importLocalBackup() {
 
 
       const localUid =
-        footprintMap.get(
+        importedFootprintIdMap.get(
           String(
             source.id
           )
@@ -11623,12 +13175,16 @@ async function importLocalBackup() {
       ) {
 
         local.previous_client_uid =
-          footprintMap.get(
+          importedFootprintIdMap.get(
             String(
               source.previous_record_id
             )
           ) ||
           null;
+
+
+        local.sync_status =
+          "pending";
 
 
         await dbPut(
@@ -11638,11 +13194,15 @@ async function importLocalBackup() {
 
 
         await queueSync(
+
           "footprints",
+
           local.client_uid,
+
           local.deleted_at
             ? "delete"
             : "upsert"
+
         );
 
       }
@@ -11670,7 +13230,7 @@ async function importLocalBackup() {
       ) {
 
         tripClientUid =
-          tripMap.get(
+          importedTripIdMap.get(
             String(
               source.trip_id
             )
@@ -11685,6 +13245,11 @@ async function importLocalBackup() {
         source.timestamp ||
         null;
 
+
+      /*
+        Standalone Food V2.x：
+        date + time
+      */
 
       if (
         !recordedAt &&
@@ -11715,6 +13280,16 @@ async function importLocalBackup() {
         recorded_at:
           recordedAt,
 
+        timezone:
+          source.timezone ??
+          null,
+
+        timezone_offset:
+          source.timezone_offset ??
+          source.gmt ??
+          source.gmtOffset ??
+          null,
+
         shop_name:
           source.shop_name ??
           source.store ??
@@ -11723,6 +13298,34 @@ async function importLocalBackup() {
         food_name:
           source.food_name ??
           source.food ??
+          null,
+
+        amount:
+          source.amount ??
+          null,
+
+        currency:
+          source.currency ??
+          null,
+
+        latitude:
+          source.latitude ??
+          null,
+
+        longitude:
+          source.longitude ??
+          null,
+
+        address:
+          source.address ??
+          null,
+
+        photo_url:
+          source.photo_url ??
+          null,
+
+        note:
+          source.note ??
           null,
 
         meal_type:
@@ -11740,6 +13343,12 @@ async function importLocalBackup() {
             source.recommended
           ),
 
+        rating:
+          Number(
+            source.rating ||
+            0
+          ),
+
         gps_accuracy:
           source.gps_accuracy ??
           source.gpsAccuracy ??
@@ -11748,19 +13357,6 @@ async function importLocalBackup() {
         address_details:
           source.address_details ??
           source.addressDetails ??
-          null,
-
-        photo_url:
-          source.photo_url ??
-          null,
-
-        timezone:
-          source.timezone ??
-          null,
-
-        timezone_offset:
-          source.timezone_offset ??
-          source.gmt ??
           null,
 
         updated_at:
@@ -11790,7 +13386,7 @@ async function importLocalBackup() {
         imported
       ) {
 
-        foodMap.set(
+        importedFoodIdMap.set(
           String(
             source.id
           ),
@@ -11822,7 +13418,7 @@ async function importLocalBackup() {
       ) {
 
         tripClientUid =
-          tripMap.get(
+          importedTripIdMap.get(
             String(
               source.trip_id
             )
@@ -11837,6 +13433,13 @@ async function importLocalBackup() {
         null;
 
 
+      /*
+        舊 Expense：
+
+        source_type = food
+        source_id = food_records.id
+      */
+
       if (
         !sourceClientUid &&
         source.source_type ===
@@ -11845,7 +13448,7 @@ async function importLocalBackup() {
       ) {
 
         sourceClientUid =
-          foodMap.get(
+          importedFoodIdMap.get(
             String(
               source.source_id
             )
@@ -11866,8 +13469,54 @@ async function importLocalBackup() {
         trip_client_uid:
           tripClientUid,
 
+        recorded_at:
+          source.recorded_at ??
+          null,
+
+        timezone:
+          source.timezone ??
+          null,
+
+        timezone_offset:
+          source.timezone_offset ??
+          null,
+
+        category:
+          source.category ??
+          null,
+
+        subcategory:
+          source.subcategory ??
+          null,
+
+        title:
+          source.title ??
+          null,
+
+        amount:
+          source.amount,
+
+        currency:
+          source.currency,
+
+        payment_method:
+          source.payment_method ??
+          null,
+
+        payer:
+          source.payer ??
+          null,
+
+        source_type:
+          source.source_type ??
+          null,
+
         source_client_uid:
           sourceClientUid,
+
+        note:
+          source.note ??
+          null,
 
         updated_at:
           source.updated_at ??
@@ -11910,19 +13559,20 @@ async function importLocalBackup() {
     );
 
 
+    /*
+      V2.1.2：
+      尊重「同步 D1」設定。
+    */
+
     if (
-      navigator.onLine
+      navigator.onLine &&
+      autoSyncEnabled
     ) {
 
       setTimeout(
         () => {
 
-          syncNow(
-            {
-              manual:
-                true
-            }
-          );
+          syncNow();
 
         },
         300
@@ -11970,21 +13620,46 @@ function initializeForms() {
   );
 
 
+  const now =
+    new Date();
+
+
+  const pad =
+    value =>
+      String(
+        value
+      )
+      .padStart(
+        2,
+        "0"
+      );
+
+
   document
     .getElementById(
       "tripStart"
     )
     .value =
-    new Date()
-      .toISOString()
-      .slice(
-        0,
-        10
-      );
+
+    now.getFullYear() +
+    "-" +
+    pad(
+      now.getMonth() +
+      1
+    ) +
+    "-" +
+    pad(
+      now.getDate()
+    );
 
 
   footprintSelectedType =
     "other";
+
+
+  setFootprintType(
+    "other"
+  );
 
 
   foodRating =
@@ -12022,9 +13697,8 @@ async function init() {
   try {
 
     /*
-      第一件事就更新網路狀態。
-      若畫面仍停在「啟動中...」，
-      表示 init 根本沒跑到。
+      1.
+      UI 基本狀態
     */
 
     updateNetworkUI();
@@ -12042,19 +13716,25 @@ async function init() {
     );
 
 
+    /*
+      2.
+      Form
+    */
+
     initializeForms();
 
 
     /*
-      Leaflet 放在 try 裡，
-      地圖失敗也會顯示 startup error。
+      3.
+      Leaflet
     */
 
     initializeMap();
 
 
     /*
-      IndexedDB。
+      4.
+      IndexedDB
     */
 
     await openLocalDB();
@@ -12067,14 +13747,23 @@ async function init() {
 
 
     /*
-      上次被中斷的 syncing
-      回復 pending。
+      5.
+      載入 D1 自動同步設定
+    */
+
+    await loadAutoSyncSetting();
+
+
+    /*
+      6.
+      修復被中斷的 syncing
     */
 
     await recoverInterruptedSync();
 
 
     /*
+      7.
       Local-first：
       先顯示 Local。
     */
@@ -12083,16 +13772,28 @@ async function init() {
 
 
     /*
-      D1 測試。
+      8.
+      檢查 Worker / D1
+
+      注意：
+      即使 auto sync OFF，
+      仍然檢查 D1 是否可連線。
+      只是「不自動同步資料」。
     */
 
     const cloudOK =
       await testCloudConnection();
 
 
+    /*
+      9.
+      Auto Sync ON 才自動同步。
+    */
+
     if (
       navigator.onLine &&
-      cloudOK
+      cloudOK &&
+      autoSyncEnabled
     ) {
 
       await syncNow();
@@ -12126,7 +13827,7 @@ async function init() {
   ) {
 
     console.error(
-      "INIT ERROR",
+      "INIT ERROR:",
       error
     );
 
@@ -12182,8 +13883,14 @@ document
       }
 
 
+      /*
+        自動同步 ON
+        才在回到頁面時 sync。
+      */
+
       if (
-        navigator.onLine
+        navigator.onLine &&
+        autoSyncEnabled
       ) {
 
         setTimeout(
