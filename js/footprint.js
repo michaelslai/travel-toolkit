@@ -1,26 +1,22 @@
 /* =========================================================
-   Travel Toolkit V2.2.1 Modular
+   Travel Toolkit V2.2.2 Modular
    File: js/footprint.js
    Modified: 2026-09-12
 
-   V2.2.1 Changes:
-   - GPS 搜尋附近地點後，自動帶入最近地點名稱
-   - 自動同步最近地點類型
-   - 若地點名稱已有內容，不覆蓋使用者輸入
-
-   Changes:
-   - 整合 V2.1.2 Footprint Local-first 核心
-   - 保留 GPS / Reverse Geocode / Nearby 10 Places
-   - 保留 8 種 Footprint 類型
-   - 補回日期分組 / 折疊
-   - 補回類型篩選
-   - 補回今日 / 目前旅程 / 全部檢視
-   - 補回 Duplicate Check：60 秒 / 30 公尺
-   - 保留 previous_client_uid / link_tracked
-   - 補回每日 Route Polyline
-   - 地圖與列表共用同一份 displayFootprints
-   - 不直接處理 D1 Sync Engine
+   V2.2.2 Changes:
+   - 補回 Map → Record 定位 / Highlight
+   - 補回 Record → Map 定位 / Popup
+   - 補回每日站點編號
+   - 補回旅程摘要
+   - 補回旅行統計
+   - 補回每日摘要
+   - 補回前一站距離 / 刪除警告
+   - 補回至下一筆紀錄時間
+   - 補回最新一筆 / 回地圖
+   - 保留 V2.2.1 GPS 最近地點自動帶入
+   - 保留 IndexedDB Local-first + D1 Sync
 ========================================================= */
+
 
 import {
 
@@ -94,8 +90,28 @@ let currentLocationMarker =
   null;
 
 
+/*
+  V2.2.2
+
+  Map ↔ Record 對應表
+
+  key:
+    footprint.client_uid
+
+  value:
+    Leaflet Marker
+*/
+
+const markerByFootprintUid =
+  new Map();
+
+
 const collapsedDates =
   new Set();
+
+
+let highlightTimer =
+  null;
 
 
 /* =========================================================
@@ -248,6 +264,60 @@ function getLocalTimeString(
 }
 
 
+/* =========================================================
+   DISPLAY TIME
+========================================================= */
+
+function formatRecordTime(
+  record
+) {
+
+  if (
+    !record ||
+    !record.recorded_at
+  ) {
+
+    return "--:--";
+
+  }
+
+
+  const date =
+    new Date(
+      record.recorded_at
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return "--:--";
+
+  }
+
+
+  return (
+
+    pad(
+      date.getHours()
+    ) +
+    ":" +
+    pad(
+      date.getMinutes()
+    )
+
+  );
+
+}
+
+
+/* =========================================================
+   TIMEZONE
+========================================================= */
+
 function getTimezoneInfo() {
 
   const now =
@@ -307,6 +377,10 @@ function getTimezoneInfo() {
 
 }
 
+
+/* =========================================================
+   LOCAL DATETIME → ISO
+========================================================= */
 
 function combineLocalDateTime(
   dateValue,
@@ -487,6 +561,26 @@ function getTripName(
 
 
 /* =========================================================
+   CURRENT TRIP
+========================================================= */
+
+function getCurrentFootprintTripUid() {
+
+  return (
+
+    el(
+      "footprintTrip"
+    )
+    ?.value ||
+
+    null
+
+  );
+
+}
+
+
+/* =========================================================
    MAP
 ========================================================= */
 
@@ -527,11 +621,13 @@ export function initializeFootprintMap() {
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 
     {
+
       maxZoom:
         19,
 
       attribution:
         "&copy; OpenStreetMap"
+
     }
 
   )
@@ -552,6 +648,54 @@ export function initializeFootprintMap() {
       .addTo(
         footprintMap
       );
+
+}
+
+
+/* =========================================================
+   V2.2.2 NUMBERED MARKER
+========================================================= */
+
+function createNumberedMarkerIcon(
+  number
+) {
+
+  return L.divIcon(
+    {
+
+      className:
+        "route-number-icon",
+
+      html: `
+
+        <div class="route-number-marker">
+
+          ${number}
+
+        </div>
+
+      `,
+
+      iconSize:
+        [
+          30,
+          30
+        ],
+
+      iconAnchor:
+        [
+          15,
+          15
+        ],
+
+      popupAnchor:
+        [
+          0,
+          -18
+        ]
+
+    }
+  );
 
 }
 
@@ -637,6 +781,1575 @@ function haversineMeters(
 
 
 /* =========================================================
+   V2.2.2 DISTANCE FORMAT
+========================================================= */
+
+function formatDistance(
+  meters
+) {
+
+  const value =
+    Number(
+      meters
+    ) ||
+    0;
+
+
+  if (
+    value <
+    1000
+  ) {
+
+    return (
+
+      Math.round(
+        value
+      ) +
+      " m"
+
+    );
+
+  }
+
+
+  return (
+
+    (
+      value /
+      1000
+    )
+    .toFixed(
+      value >=
+        10000
+
+        ? 1
+
+        : 2
+    ) +
+
+    " km"
+
+  );
+
+}
+
+
+/* =========================================================
+   V2.2.2 DATE GROUP
+========================================================= */
+
+function groupFootprintsByDay(
+  records
+) {
+
+  const groups =
+    new Map();
+
+
+  records.forEach(
+    record => {
+
+      const dateKey =
+
+        getLocalDateString(
+
+          new Date(
+            record.recorded_at
+          )
+
+        );
+
+
+      if (
+        !groups.has(
+          dateKey
+        )
+      ) {
+
+        groups.set(
+          dateKey,
+          []
+        );
+
+      }
+
+
+      groups
+        .get(
+          dateKey
+        )
+        .push(
+          record
+        );
+
+    }
+  );
+
+
+  return groups;
+
+}
+
+
+/* =========================================================
+   V2.2.2 PREVIOUS LINK STATE
+========================================================= */
+
+function getPreviousLinkState(
+  record
+) {
+
+  if (
+    Number(
+      record.link_tracked
+    ) ===
+    0
+  ) {
+
+    return {
+
+      state:
+        "disabled",
+
+      previous:
+        null
+
+    };
+
+  }
+
+
+  const previousUid =
+    record.previous_client_uid;
+
+
+  if (
+    !previousUid
+  ) {
+
+    return {
+
+      state:
+        "none",
+
+      previous:
+        null
+
+    };
+
+  }
+
+
+  const previous =
+
+    footprints.find(
+      item =>
+        String(
+          item.client_uid
+        ) ===
+        String(
+          previousUid
+        )
+    );
+
+
+  if (
+    !previous
+  ) {
+
+    return {
+
+      state:
+        "missing",
+
+      previous:
+        null
+
+    };
+
+  }
+
+
+  if (
+    previous.deleted_at
+  ) {
+
+    return {
+
+      state:
+        "deleted",
+
+      previous
+
+    };
+
+  }
+
+
+  return {
+
+    state:
+      "valid",
+
+    previous
+
+  };
+
+}
+
+
+/* =========================================================
+   V2.2.2 PREVIOUS DISTANCE
+========================================================= */
+
+function getPreviousDistance(
+  record
+) {
+
+  const link =
+    getPreviousLinkState(
+      record
+    );
+
+
+  if (
+    link.state !==
+    "valid"
+  ) {
+
+    return null;
+
+  }
+
+
+  const previous =
+    link.previous;
+
+
+  if (
+    record.latitude ===
+      null ||
+    record.latitude ===
+      undefined ||
+    record.longitude ===
+      null ||
+    record.longitude ===
+      undefined ||
+    previous.latitude ===
+      null ||
+    previous.latitude ===
+      undefined ||
+    previous.longitude ===
+      null ||
+    previous.longitude ===
+      undefined
+  ) {
+
+    return null;
+
+  }
+
+
+  return haversineMeters(
+
+    Number(
+      previous.latitude
+    ),
+
+    Number(
+      previous.longitude
+    ),
+
+    Number(
+      record.latitude
+    ),
+
+    Number(
+      record.longitude
+    )
+
+  );
+
+}
+
+
+/* =========================================================
+   V2.2.2 NEXT LINKED RECORD
+========================================================= */
+
+function getNextLinkedRecord(
+  record
+) {
+
+  if (
+    !record
+  ) {
+
+    return null;
+
+  }
+
+
+  return (
+
+    footprints
+
+      .filter(
+        item => {
+
+          if (
+            item.deleted_at
+          ) {
+
+            return false;
+
+          }
+
+
+          if (
+            Number(
+              item.link_tracked
+            ) ===
+            0
+          ) {
+
+            return false;
+
+          }
+
+
+          if (
+            String(
+              item.previous_client_uid ||
+              ""
+            ) !==
+            String(
+              record.client_uid
+            )
+          ) {
+
+            return false;
+
+          }
+
+
+          if (
+            String(
+              item.trip_client_uid ||
+              ""
+            ) !==
+            String(
+              record.trip_client_uid ||
+              ""
+            )
+          ) {
+
+            return false;
+
+          }
+
+
+          return true;
+
+        }
+      )
+
+      .sort(
+        (
+          a,
+          b
+        ) =>
+
+          new Date(
+            a.recorded_at
+          ) -
+
+          new Date(
+            b.recorded_at
+          )
+
+      )[0] ||
+
+    null
+
+  );
+
+}
+
+
+/* =========================================================
+   V2.2.2 TIME TO NEXT RECORD
+========================================================= */
+
+function getTimeToNextLinkedRecord(
+  record
+) {
+
+  const next =
+    getNextLinkedRecord(
+      record
+    );
+
+
+  if (
+    !next
+  ) {
+
+    return null;
+
+  }
+
+
+  const currentTime =
+    new Date(
+      record.recorded_at
+    )
+    .getTime();
+
+
+  const nextTime =
+    new Date(
+      next.recorded_at
+    )
+    .getTime();
+
+
+  if (
+    !Number.isFinite(
+      currentTime
+    ) ||
+    !Number.isFinite(
+      nextTime
+    )
+  ) {
+
+    return null;
+
+  }
+
+
+  const diffMs =
+    nextTime -
+    currentTime;
+
+
+  if (
+    diffMs <
+    0
+  ) {
+
+    return null;
+
+  }
+
+
+  const totalMinutes =
+
+    Math.round(
+      diffMs /
+      60000
+    );
+
+
+  const hours =
+
+    Math.floor(
+      totalMinutes /
+      60
+    );
+
+
+  const minutes =
+
+    totalMinutes %
+    60;
+
+
+  let text =
+    "";
+
+
+  if (
+    hours >
+    0
+  ) {
+
+    text +=
+      `${hours} 小時`;
+
+  }
+
+
+  if (
+    minutes >
+      0 ||
+    hours ===
+      0
+  ) {
+
+    if (
+      text
+    ) {
+
+      text +=
+        " ";
+
+    }
+
+
+    text +=
+      `${minutes} 分`;
+
+  }
+
+
+  return {
+
+    next,
+
+    text
+
+  };
+
+}
+
+/* =========================================================
+   V2.2.2 TRACKED DAY DISTANCE
+========================================================= */
+
+function calculateTrackedDayDistance(
+  dayRecords
+) {
+
+  let total =
+    0;
+
+
+  const dayIds =
+    new Set(
+
+      dayRecords.map(
+        record =>
+          String(
+            record.client_uid
+          )
+      )
+
+    );
+
+
+  dayRecords.forEach(
+    record => {
+
+      const link =
+        getPreviousLinkState(
+          record
+        );
+
+
+      if (
+        link.state !==
+        "valid"
+      ) {
+
+        return;
+
+      }
+
+
+      const previous =
+        link.previous;
+
+
+      /*
+        必須是同一天畫面中的紀錄
+      */
+
+      if (
+        !dayIds.has(
+          String(
+            previous.client_uid
+          )
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      /*
+        必須同一旅程
+      */
+
+      if (
+        String(
+          previous.trip_client_uid ||
+          ""
+        ) !==
+        String(
+          record.trip_client_uid ||
+          ""
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      const distance =
+        getPreviousDistance(
+          record
+        );
+
+
+      if (
+        distance !==
+        null
+      ) {
+
+        total +=
+          distance;
+
+      }
+
+    }
+  );
+
+
+  return total;
+
+}
+
+
+/* =========================================================
+   V2.2.2 TOTAL TRACKED DISTANCE
+========================================================= */
+
+function calculateTrackedDistance(
+  records
+) {
+
+  let total =
+    0;
+
+
+  const groups =
+    groupFootprintsByDay(
+      records
+    );
+
+
+  for (
+    const dayRecords of
+    groups.values()
+  ) {
+
+    total +=
+      calculateTrackedDayDistance(
+        dayRecords
+      );
+
+  }
+
+
+  return total;
+
+}
+
+
+/* =========================================================
+   V2.2.2 TYPE SUMMARY
+========================================================= */
+
+function getTypeSummary(
+  records
+) {
+
+  const counts =
+    {};
+
+
+  records.forEach(
+    record => {
+
+      const type =
+
+        FOOTPRINT_TYPES[
+          record.type
+        ]
+
+          ? record.type
+
+          : "other";
+
+
+      counts[
+        type
+      ] =
+
+        (
+          counts[
+            type
+          ] ||
+          0
+        ) +
+        1;
+
+    }
+  );
+
+
+  return Object
+    .entries(
+      counts
+    )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        b[1] -
+        a[1]
+    )
+    .map(
+      (
+        [
+          type,
+          count
+        ]
+      ) => {
+
+        const info =
+
+          FOOTPRINT_TYPES[
+            type
+          ] ||
+
+          FOOTPRINT_TYPES.other;
+
+
+        return {
+
+          type,
+
+          icon:
+            info.icon,
+
+          label:
+            info.label,
+
+          count
+
+        };
+
+      }
+    );
+
+}
+
+
+/* =========================================================
+   V2.2.2 DAILY TYPE SUMMARY
+========================================================= */
+
+function buildDailyTypeSummaryHtml(
+  records
+) {
+
+  return getTypeSummary(
+    records
+  )
+  .map(
+    item => `
+
+      <span class="date-type-chip">
+
+        ${item.icon}
+
+        ${escapeHtml(
+          item.label
+        )}
+
+        ${item.count}
+
+      </span>
+
+    `
+  )
+  .join(
+    ""
+  );
+
+}
+
+
+/* =========================================================
+   V2.2.2 FOOTPRINT STATISTICS
+========================================================= */
+
+function renderFootprintStats(
+  records
+) {
+
+  const recordCount =
+    el(
+      "footprintStatsRecords"
+    );
+
+
+  const dayCount =
+    el(
+      "footprintStatsDays"
+    );
+
+
+  const distance =
+    el(
+      "footprintStatsDistance"
+    );
+
+
+  if (
+    recordCount
+  ) {
+
+    recordCount.textContent =
+      String(
+        records.length
+      );
+
+  }
+
+
+  const groups =
+    groupFootprintsByDay(
+      records
+    );
+
+
+  if (
+    dayCount
+  ) {
+
+    dayCount.textContent =
+      String(
+        groups.size
+      );
+
+  }
+
+
+  if (
+    distance
+  ) {
+
+    distance.textContent =
+      formatDistance(
+
+        calculateTrackedDistance(
+          records
+        )
+
+      );
+
+  }
+
+}
+
+
+/* =========================================================
+   V2.2.2 TRIP SUMMARY
+========================================================= */
+
+function renderFootprintTripSummary() {
+
+  const tripUid =
+    getCurrentFootprintTripUid();
+
+
+  const activeRecords =
+
+    footprints
+      .filter(
+        record =>
+          !record.deleted_at
+      )
+      .filter(
+        record =>
+
+          String(
+            record.trip_client_uid ||
+            ""
+          ) ===
+          String(
+            tripUid ||
+            ""
+          )
+
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+
+          new Date(
+            a.recorded_at
+          ) -
+
+          new Date(
+            b.recorded_at
+          )
+
+      );
+
+
+  const title =
+    el(
+      "footprintTripSummaryTitle"
+    );
+
+
+  const recordCount =
+    el(
+      "footprintTripSummaryRecords"
+    );
+
+
+  const dayCount =
+    el(
+      "footprintTripSummaryDays"
+    );
+
+
+  const distance =
+    el(
+      "footprintTripSummaryDistance"
+    );
+
+
+  const period =
+    el(
+      "footprintTripSummaryPeriod"
+    );
+
+
+  const types =
+    el(
+      "footprintTripSummaryTypes"
+    );
+
+
+  if (
+    title
+  ) {
+
+    title.textContent =
+      getTripName(
+        tripUid
+      );
+
+  }
+
+
+  if (
+    recordCount
+  ) {
+
+    recordCount.textContent =
+      String(
+        activeRecords.length
+      );
+
+  }
+
+
+  const groups =
+    groupFootprintsByDay(
+      activeRecords
+    );
+
+
+  if (
+    dayCount
+  ) {
+
+    dayCount.textContent =
+      String(
+        groups.size
+      );
+
+  }
+
+
+  if (
+    distance
+  ) {
+
+    distance.textContent =
+      formatDistance(
+
+        calculateTrackedDistance(
+          activeRecords
+        )
+
+      );
+
+  }
+
+
+  if (
+    !activeRecords.length
+  ) {
+
+    if (
+      period
+    ) {
+
+      period.textContent =
+        "尚無足跡";
+
+    }
+
+
+    if (
+      types
+    ) {
+
+      types.innerHTML =
+        "";
+
+    }
+
+
+    return;
+
+  }
+
+
+  const first =
+    activeRecords[
+      0
+    ];
+
+
+  const last =
+    activeRecords[
+      activeRecords.length -
+      1
+    ];
+
+
+  if (
+    period
+  ) {
+
+    period.innerHTML = `
+
+      📅
+      ${escapeHtml(
+        getLocalDateString(
+          new Date(
+            first.recorded_at
+          )
+        )
+      )}
+
+      ${escapeHtml(
+        formatRecordTime(
+          first
+        )
+      )}
+
+      <br>
+
+      ↓
+
+      <br>
+
+      📅
+      ${escapeHtml(
+        getLocalDateString(
+          new Date(
+            last.recorded_at
+          )
+        )
+      )}
+
+      ${escapeHtml(
+        formatRecordTime(
+          last
+        )
+      )}
+
+    `;
+
+  }
+
+
+  if (
+    types
+  ) {
+
+    types.innerHTML =
+
+      getTypeSummary(
+        activeRecords
+      )
+      .map(
+        item => `
+
+          <span class="trip-summary-chip">
+
+            ${item.icon}
+
+            ${escapeHtml(
+              item.label
+            )}
+
+            ${item.count}
+
+          </span>
+
+        `
+      )
+      .join(
+        ""
+      );
+
+  }
+
+}
+
+
+/* =========================================================
+   V2.2.2 FIND RECORD ELEMENT
+========================================================= */
+
+function findFootprintRecordElement(
+  clientUid
+) {
+
+  return [
+
+    ...document
+      .querySelectorAll(
+        "#footprintList .record[data-footprint-uid]"
+      )
+
+  ]
+  .find(
+    element =>
+
+      String(
+        element.dataset.footprintUid
+      ) ===
+      String(
+        clientUid
+      )
+
+  ) ||
+  null;
+
+}
+
+
+/* =========================================================
+   V2.2.2 HIGHLIGHT RECORD
+========================================================= */
+
+function highlightFootprintRecord(
+  clientUid
+) {
+
+  if (
+    highlightTimer
+  ) {
+
+    clearTimeout(
+      highlightTimer
+    );
+
+    highlightTimer =
+      null;
+
+  }
+
+
+  document
+    .querySelectorAll(
+      "#footprintList .record-highlight"
+    )
+    .forEach(
+      element =>
+        element.classList.remove(
+          "record-highlight"
+        )
+    );
+
+
+  const recordElement =
+    findFootprintRecordElement(
+      clientUid
+    );
+
+
+  if (
+    !recordElement
+  ) {
+
+    return;
+
+  }
+
+
+  recordElement
+    .classList
+    .add(
+      "record-highlight"
+    );
+
+
+  highlightTimer =
+    setTimeout(
+      () => {
+
+        recordElement
+          .classList
+          .remove(
+            "record-highlight"
+          );
+
+
+        highlightTimer =
+          null;
+
+      },
+      2600
+    );
+
+}
+
+
+/* =========================================================
+   V2.2.2 MAP → RECORD
+========================================================= */
+
+function scrollToFootprintRecord(
+  clientUid
+) {
+
+  const record =
+
+    footprints.find(
+      item =>
+
+        String(
+          item.client_uid
+        ) ===
+        String(
+          clientUid
+        )
+
+    );
+
+
+  if (
+    !record
+  ) {
+
+    return;
+
+  }
+
+
+  const dateKey =
+
+    getLocalDateString(
+
+      new Date(
+        record.recorded_at
+      )
+
+    );
+
+
+  /*
+    若日期群組收合，
+    先自動展開。
+  */
+
+  if (
+    collapsedDates.has(
+      dateKey
+    )
+  ) {
+
+    collapsedDates.delete(
+      dateKey
+    );
+
+
+    const group =
+
+      document
+        .querySelector(
+          `.date-group[data-date="${dateKey}"]`
+        );
+
+
+    if (
+      group
+    ) {
+
+      group.classList.remove(
+        "collapsed"
+      );
+
+    }
+
+  }
+
+
+  const recordElement =
+    findFootprintRecordElement(
+      clientUid
+    );
+
+
+  if (
+    !recordElement
+  ) {
+
+    return;
+
+  }
+
+
+  recordElement
+    .scrollIntoView(
+      {
+
+        behavior:
+          "smooth",
+
+        block:
+          "center"
+
+      }
+    );
+
+
+  highlightFootprintRecord(
+    clientUid
+  );
+
+}
+
+
+/* =========================================================
+   V2.2.2 RECORD → MAP
+========================================================= */
+
+function focusFootprintOnMap(
+  clientUid
+) {
+
+  const marker =
+
+    markerByFootprintUid.get(
+      String(
+        clientUid
+      )
+    );
+
+
+  if (
+    !marker ||
+    !footprintMap
+  ) {
+
+    hooks.showToast(
+      "這筆足跡沒有可定位的地圖座標"
+    );
+
+    return;
+
+  }
+
+
+  const mapElement =
+    el(
+      "footprintMap"
+    );
+
+
+  if (
+    mapElement
+  ) {
+
+    mapElement
+      .scrollIntoView(
+        {
+
+          behavior:
+            "smooth",
+
+          block:
+            "center"
+
+        }
+      );
+
+  }
+
+
+  setTimeout(
+    () => {
+
+      footprintMap
+        .invalidateSize();
+
+
+      footprintMap
+        .setView(
+          marker.getLatLng(),
+          16,
+          {
+
+            animate:
+              true
+
+          }
+        );
+
+
+      marker
+        .openPopup();
+
+    },
+    450
+  );
+
+}
+
+
+/* =========================================================
+   V2.2.2 BACK TO MAP
+========================================================= */
+
+function scrollBackToFootprintMap() {
+
+  const mapElement =
+    el(
+      "footprintMap"
+    );
+
+
+  if (
+    !mapElement
+  ) {
+
+    return;
+
+  }
+
+
+  mapElement
+    .scrollIntoView(
+      {
+
+        behavior:
+          "smooth",
+
+        block:
+          "center"
+
+      }
+    );
+
+
+  setTimeout(
+    () => {
+
+      footprintMap
+        ?.invalidateSize();
+
+    },
+    450
+  );
+
+}
+
+
+/* =========================================================
+   V2.2.2 JUMP TO LATEST RECORD
+========================================================= */
+
+function jumpToLatestFootprint() {
+
+  const records =
+
+    getDisplayFootprints()
+      .sort(
+        (
+          a,
+          b
+        ) =>
+
+          new Date(
+            a.recorded_at
+          ) -
+
+          new Date(
+            b.recorded_at
+          )
+
+      );
+
+
+  if (
+    !records.length
+  ) {
+
+    hooks.showToast(
+      "目前沒有符合條件的足跡"
+    );
+
+    return;
+
+  }
+
+
+  const latest =
+    records[
+      records.length -
+      1
+    ];
+
+
+  scrollToFootprintRecord(
+    latest.client_uid
+  );
+
+
+  hooks.showToast(
+
+    "⏬ 已跳到最新一筆：" +
+
+    (
+      latest.place_name ||
+      "未命名地點"
+    )
+
+  );
+
+}
+
+
+/* =========================================================
    GPS
 ========================================================= */
 
@@ -663,7 +2376,8 @@ function getGPSPosition() {
       }
 
 
-      navigator.geolocation
+      navigator
+        .geolocation
         .getCurrentPosition(
 
           resolve,
@@ -671,6 +2385,7 @@ function getGPSPosition() {
           reject,
 
           {
+
             enableHighAccuracy:
               true,
 
@@ -679,6 +2394,7 @@ function getGPSPosition() {
 
             maximumAge:
               0
+
           }
 
         );
@@ -886,6 +2602,7 @@ function nearbyDisplayName(
 
 }
 
+
 /* =========================================================
    OVERPASS QUERY
 ========================================================= */
@@ -985,7 +2702,8 @@ out center tags;
       }
 
 
-      return await response.json();
+      return await response
+        .json();
 
     }
     catch (
@@ -1008,10 +2726,13 @@ out center tags;
 
 
   throw (
+
     lastError ||
+
     new Error(
       "附近地點查詢失敗"
     )
+
   );
 
 }
@@ -1053,6 +2774,7 @@ async function loadNearbyPlaces(
   ) {
 
     list.innerHTML =
+
       '<div class="status-text">正在搜尋附近地點...</div>';
 
   }
@@ -1073,6 +2795,7 @@ async function loadNearbyPlaces(
         data.elements ||
         []
       )
+
       .map(
         item => {
 
@@ -1089,14 +2812,17 @@ async function loadNearbyPlaces(
 
 
           const name =
+
             nearbyDisplayName(
               item.tags
             );
 
 
           if (
-            lat === undefined ||
-            lon === undefined ||
+            lat ===
+              undefined ||
+            lon ===
+              undefined ||
             !name
           ) {
 
@@ -1119,18 +2845,22 @@ async function loadNearbyPlaces(
               lon,
 
             distance:
+
               Math.round(
 
                 haversineMeters(
+
                   latitude,
                   longitude,
                   lat,
                   lon
+
                 )
 
               ),
 
             type:
+
               inferNearbyType(
                 item.tags ||
                 {}
@@ -1144,9 +2874,11 @@ async function loadNearbyPlaces(
 
         }
       )
+
       .filter(
         Boolean
       )
+
       .sort(
         (
           a,
@@ -1198,6 +2930,7 @@ async function loadNearbyPlaces(
 
           }
         )
+
         .slice(
           0,
           FOOTPRINT_NEARBY_LIMIT
@@ -1205,18 +2938,11 @@ async function loadNearbyPlaces(
 
 
     /* =====================================================
-       V2.2.1
-       AUTO SELECT NEAREST PLACE
+       V2.2.1+
+       GPS 後自動選最近地點
 
-       GPS 搜尋附近地點完成後：
-       1. 若地點名稱輸入框為空白
-       2. 且附近地點至少有一筆
-       3. 自動帶入距離最近的第一筆
-       4. 同步帶入該地點類型
-
-       若使用者已輸入地點名稱，
-       或正在編輯既有紀錄，
-       則不覆蓋原內容。
+       只有地點名稱目前是空白時才自動填入，
+       不覆蓋使用者已輸入的內容。
     ===================================================== */
 
     const placeInput =
@@ -1226,13 +2952,16 @@ async function loadNearbyPlaces(
 
 
     if (
-      nearbyPlaces.length > 0 &&
+      nearbyPlaces.length >
+        0 &&
       placeInput &&
       !placeInput.value.trim()
     ) {
 
       const nearestPlace =
-        nearbyPlaces[0];
+        nearbyPlaces[
+          0
+        ];
 
 
       placeInput.value =
@@ -1321,6 +3050,7 @@ function renderNearbyPlaces() {
 
     `;
 
+
     return;
 
   }
@@ -1355,11 +3085,13 @@ function renderNearbyPlaces() {
               <span class="nearby-name">
 
                 ${type.icon}
+
                 ${escapeHtml(
                   place.name
                 )}
 
               </span>
+
 
               <span class="nearby-meta">
 
@@ -1496,6 +3228,7 @@ export async function getFootprintGPS() {
         position.coords.longitude,
 
       accuracy:
+
         Math.round(
           position.coords.accuracy
         ),
@@ -1538,9 +3271,11 @@ export async function getFootprintGPS() {
             footprintLocation.longitude
           ]
         )
+
         .addTo(
           footprintMap
         )
+
         .bindPopup(
           "目前位置"
         );
@@ -1554,25 +3289,43 @@ export async function getFootprintGPS() {
 
       status.textContent =
 
-        `GPS ±${footprintLocation.accuracy}m，正在取得地址...`;
+        `GPS ${footprintLocation.latitude.toFixed(6)}, ` +
+
+        `${footprintLocation.longitude.toFixed(6)} ` +
+
+        `±${footprintLocation.accuracy}m`;
 
     }
 
 
+    /*
+      Reverse Geocode
+    */
+
     try {
 
-      const geo =
+      const result =
         await reverseGeocode(
+
           footprintLocation.latitude,
           footprintLocation.longitude
+
         );
 
 
-      footprintLocation.address =
+      const address =
 
-        geo.address ||
-        geo.display_name ||
+        result?.display_name ||
+
+        result?.address ||
+
+        result?.data?.display_name ||
+
         "";
+
+
+      footprintLocation.address =
+        address;
 
 
       const addressInput =
@@ -1582,11 +3335,12 @@ export async function getFootprintGPS() {
 
 
       if (
-        addressInput
+        addressInput &&
+        !addressInput.value.trim()
       ) {
 
         addressInput.value =
-          footprintLocation.address;
+          address;
 
       }
 
@@ -1603,32 +3357,13 @@ export async function getFootprintGPS() {
     }
 
 
-    if (
-      status
-    ) {
-
-      status.innerHTML = `
-
-        GPS ±${footprintLocation.accuracy}m
-
-        ${
-          footprintLocation.address
-            ? "<br>" +
-              escapeHtml(
-                footprintLocation.address
-              )
-            : ""
-        }
-
-      `;
-
-    }
-
+    /*
+      Nearby POI
+    */
 
     await loadNearbyPlaces(
 
       footprintLocation.latitude,
-
       footprintLocation.longitude
 
     );
@@ -1639,25 +3374,28 @@ export async function getFootprintGPS() {
   ) {
 
     console.error(
+      "GPS error:",
       error
     );
 
 
     let message =
-      "無法取得 GPS 位置";
+      "無法取得目前位置";
 
 
     if (
-      error.code ===
+      error?.code ===
       1
     ) {
 
       message =
-        "定位權限被拒絕";
+        "GPS 權限被拒絕";
 
     }
+
+
     else if (
-      error.code ===
+      error?.code ===
       2
     ) {
 
@@ -1665,8 +3403,10 @@ export async function getFootprintGPS() {
         "目前無法取得 GPS 位置";
 
     }
+
+
     else if (
-      error.code ===
+      error?.code ===
       3
     ) {
 
@@ -1686,9 +3426,8 @@ export async function getFootprintGPS() {
     }
 
 
-    hooks.showMessage(
-      message,
-      "error"
+    hooks.showToast(
+      message
     );
 
   }
@@ -1818,9 +3557,7 @@ function findPotentialDuplicate(
           return {
 
             item,
-
             timeDiff,
-
             distance
 
           };
@@ -1836,7 +3573,6 @@ function findPotentialDuplicate(
 
           candidate.distance <=
             30
-
       )
 
       .sort(
@@ -1940,7 +3676,6 @@ function findPreviousFootprint(
           new Date(
             a.recorded_at
           )
-
       )[0] ||
 
     null
@@ -1986,6 +3721,7 @@ async function saveFootprint() {
       "footprintDate"
     )
     ?.value ||
+
     getLocalDateString();
 
 
@@ -1995,6 +3731,7 @@ async function saveFootprint() {
       "footprintTime"
     )
     ?.value ||
+
     getLocalTimeString();
 
 
@@ -2247,54 +3984,124 @@ export function editFootprint(
     );
 
 
-  el(
-    "footprintEditingUid"
-  ).value =
-    clientUid;
-
-
-  el(
-    "footprintTrip"
-  ).value =
-    record.trip_client_uid ||
-    "";
-
-
-  el(
-    "footprintDate"
-  ).value =
-    getLocalDateString(
-      date
+  const editing =
+    el(
+      "footprintEditingUid"
     );
 
 
-  el(
-    "footprintTime"
-  ).value =
-    getLocalTimeString(
-      date
+  if (
+    editing
+  ) {
+
+    editing.value =
+      clientUid;
+
+  }
+
+
+  const trip =
+    el(
+      "footprintTrip"
     );
 
 
-  el(
-    "footprintPlace"
-  ).value =
-    record.place_name ||
-    "";
+  if (
+    trip
+  ) {
+
+    trip.value =
+      record.trip_client_uid ||
+      "";
+
+  }
 
 
-  el(
-    "footprintAddress"
-  ).value =
-    record.address ||
-    "";
+  const dateInput =
+    el(
+      "footprintDate"
+    );
 
 
-  el(
-    "footprintNote"
-  ).value =
-    record.note ||
-    "";
+  if (
+    dateInput
+  ) {
+
+    dateInput.value =
+      getLocalDateString(
+        date
+      );
+
+  }
+
+
+  const timeInput =
+    el(
+      "footprintTime"
+    );
+
+
+  if (
+    timeInput
+  ) {
+
+    timeInput.value =
+      getLocalTimeString(
+        date
+      );
+
+  }
+
+
+  const place =
+    el(
+      "footprintPlace"
+    );
+
+
+  if (
+    place
+  ) {
+
+    place.value =
+      record.place_name ||
+      "";
+
+  }
+
+
+  const address =
+    el(
+      "footprintAddress"
+    );
+
+
+  if (
+    address
+  ) {
+
+    address.value =
+      record.address ||
+      "";
+
+  }
+
+
+  const note =
+    el(
+      "footprintNote"
+    );
+
+
+  if (
+    note
+  ) {
+
+    note.value =
+      record.note ||
+      "";
+
+  }
 
 
   const linkTracked =
@@ -2444,17 +4251,59 @@ export async function deleteFootprint(
   }
 
 
+  const childCount =
+
+    footprints.filter(
+      item =>
+
+        !item.deleted_at &&
+
+        Number(
+          item.link_tracked
+        ) !==
+        0 &&
+
+        String(
+          item.previous_client_uid ||
+          ""
+        ) ===
+        String(
+          record.client_uid
+        )
+    )
+    .length;
+
+
+  let message =
+
+    "確定要刪除這筆足跡？\n\n📍 " +
+
+    (
+      record.place_name ||
+      "未命名地點"
+    );
+
+
+  if (
+    childCount >
+    0
+  ) {
+
+    message +=
+
+      `\n\n⚠️ 有 ${childCount} 筆後續足跡連到這筆紀錄。` +
+
+      "\n刪除後，後續足跡會顯示「前一站紀錄已刪除」。";
+
+  }
+
+
   const confirmed =
     await hooks.confirmDialog(
 
       "刪除足跡",
 
-      "確定要刪除這筆足跡？\n\n📍 " +
-
-      (
-        record.place_name ||
-        ""
-      )
+      message
 
     );
 
@@ -2478,7 +4327,9 @@ export async function deleteFootprint(
 
 
   hooks.showToast(
+
     "🗑️ 足跡已刪除"
+
   );
 
 }
@@ -2680,6 +4531,7 @@ export function resetFootprintForm() {
   renderFootprintTypes();
 
 }
+
 /* =========================================================
    DISPLAY FILTER
 ========================================================= */
@@ -2726,7 +4578,6 @@ function getDisplayFootprints() {
             )
           ) ===
           today
-
       );
 
   }
@@ -2738,25 +4589,21 @@ function getDisplayFootprints() {
   ) {
 
     const currentTrip =
-
-      el(
-        "footprintTrip"
-      )
-      ?.value ||
-
-      null;
+      getCurrentFootprintTripUid();
 
 
     records =
       records.filter(
         record =>
 
-          (
+          String(
             record.trip_client_uid ||
-            null
+            ""
           ) ===
-          currentTrip
-
+          String(
+            currentTrip ||
+            ""
+          )
       );
 
   }
@@ -2818,11 +4665,15 @@ function getDisplayFootprints() {
           const text = [
 
             record.place_name,
+
             record.address,
+
             record.note,
+
             getTripName(
               record.trip_client_uid
             ),
+
             FOOTPRINT_TYPES[
               record.type
             ]
@@ -2861,14 +4712,13 @@ function getDisplayFootprints() {
       new Date(
         a.recorded_at
       )
-
   );
 
 }
 
 
 /* =========================================================
-   DATE GROUP
+   DATE TITLE
 ========================================================= */
 
 function formatDateTitle(
@@ -2921,6 +4771,133 @@ function formatDateTitle(
     ]}）`
 
   );
+
+}
+
+
+/* =========================================================
+   SEARCH RESULT INFO
+========================================================= */
+
+function renderFootprintSearchResultInfo(
+  records
+) {
+
+  const info =
+    el(
+      "footprintSearchResultInfo"
+    );
+
+
+  if (
+    !info
+  ) {
+
+    return;
+
+  }
+
+
+  const keyword =
+
+    el(
+      "footprintSearch"
+    )
+    ?.value
+    .trim() ||
+    "";
+
+
+  const typeFilter =
+
+    el(
+      "footprintTypeFilter"
+    )
+    ?.value ||
+    "all";
+
+
+  const scope =
+
+    el(
+      "footprintScopeFilter"
+    )
+    ?.value ||
+    "all";
+
+
+  const filters =
+    [];
+
+
+  if (
+    keyword
+  ) {
+
+    filters.push(
+      `搜尋「${keyword}」`
+    );
+
+  }
+
+
+  if (
+    typeFilter !==
+    "all"
+  ) {
+
+    filters.push(
+
+      FOOTPRINT_TYPES[
+        typeFilter
+      ]
+      ?.label ||
+      typeFilter
+
+    );
+
+  }
+
+
+  if (
+    scope ===
+    "today"
+  ) {
+
+    filters.push(
+      "今天"
+    );
+
+  }
+
+
+  if (
+    scope ===
+    "trip"
+  ) {
+
+    filters.push(
+      "目前旅程"
+    );
+
+  }
+
+
+  if (
+    filters.length
+  ) {
+
+    info.textContent =
+
+      `找到 ${records.length} 筆符合條件的足跡`;
+
+  }
+  else {
+
+    info.textContent =
+      "";
+
+  }
 
 }
 
@@ -2986,11 +4963,132 @@ function syncBadgeHtml(
 
 
 /* =========================================================
+   V2.2.2 RECORD LINK BADGES
+========================================================= */
+
+function buildRecordLinkBadges(
+  record
+) {
+
+  let html =
+    "";
+
+
+  const link =
+    getPreviousLinkState(
+      record
+    );
+
+
+  if (
+    link.state ===
+    "valid"
+  ) {
+
+    const distance =
+      getPreviousDistance(
+        record
+      );
+
+
+    if (
+      distance !==
+      null
+    ) {
+
+      html += `
+
+        <span class="record-distance">
+
+          ↗ 前一站
+          ${formatDistance(
+            distance
+          )}
+
+        </span>
+
+      `;
+
+    }
+
+  }
+
+
+  else if (
+    link.state ===
+    "deleted"
+  ) {
+
+    html += `
+
+      <span class="record-link-warning">
+
+        ⚠️ 前一站紀錄已刪除
+
+      </span>
+
+    `;
+
+  }
+
+
+  else if (
+    link.state ===
+    "missing"
+  ) {
+
+    html += `
+
+      <span class="record-link-warning">
+
+        ⚠️ 找不到前一站紀錄
+
+      </span>
+
+    `;
+
+  }
+
+
+  const nextInfo =
+    getTimeToNextLinkedRecord(
+      record
+    );
+
+
+  if (
+    nextInfo &&
+    nextInfo.text
+  ) {
+
+    html += `
+
+      <span class="record-next-time">
+
+        ⏱ 至下一筆紀錄
+        ${escapeHtml(
+          nextInfo.text
+        )}
+
+      </span>
+
+    `;
+
+  }
+
+
+  return html;
+
+}
+
+
+/* =========================================================
    RECORD CARD
 ========================================================= */
 
 function footprintCardHtml(
-  record
+  record,
+  sequenceNumber
 ) {
 
   const type =
@@ -3002,9 +5100,9 @@ function footprintCardHtml(
     FOOTPRINT_TYPES.other;
 
 
-  const date =
-    new Date(
-      record.recorded_at
+  const tripName =
+    getTripName(
+      record.trip_client_uid
     );
 
 
@@ -3017,94 +5115,127 @@ function footprintCardHtml(
       )}"
     >
 
-      <div class="record-title">
+      <div
+        class="record-main"
+        data-action="focus-footprint"
+        data-client-uid="${escapeHtml(
+          record.client_uid
+        )}"
+      >
 
-        ${type.icon}
+        <div class="record-title">
 
-        ${escapeHtml(
-          record.place_name ||
-          "未命名地點"
-        )}
+          <span class="record-number">
+            ${sequenceNumber}
+          </span>
 
-        ${syncBadgeHtml(
-          record.sync_status
-        )}
+          ${type.icon}
 
-      </div>
+          ${escapeHtml(
+            record.place_name ||
+            "未命名地點"
+          )}
+
+          ${syncBadgeHtml(
+            record.sync_status
+          )}
+
+        </div>
 
 
-      <div class="record-meta">
+        <div class="record-meta">
 
-        🕒
-        ${pad(
-          date.getHours()
-        )}:${pad(
-          date.getMinutes()
-        )}
+          🕒
+          ${escapeHtml(
+            formatRecordTime(
+              record
+            )
+          )}
 
-        ・
+          ・
 
-        ${type.label}
+          ${escapeHtml(
+            type.label
+          )}
 
-        <br>
+          <br>
 
-        🧳
-        ${escapeHtml(
-          getTripName(
-            record.trip_client_uid
-          )
-        )}
+          🧳
+          ${escapeHtml(
+            tripName
+          )}
+
+          ${
+            record.accuracy
+
+              ? `
+
+                <br>
+
+                📡 GPS ±${escapeHtml(
+                  Math.round(
+                    Number(
+                      record.accuracy
+                    )
+                  )
+                )}m
+
+              `
+
+              : ""
+          }
+
+        </div>
+
 
         ${
-          record.accuracy
+          record.address
 
-            ? `<br>📡 GPS ±${escapeHtml(
-                record.accuracy
-              )}m`
+            ? `
+
+              <div class="record-meta">
+
+                🏠
+                ${escapeHtml(
+                  record.address
+                )}
+
+              </div>
+
+            `
+
+            : ""
+        }
+
+
+        <div>
+
+          ${buildRecordLinkBadges(
+            record
+          )}
+
+        </div>
+
+
+        ${
+          record.note
+
+            ? `
+
+              <div class="record-note">
+
+                ${escapeHtml(
+                  record.note
+                )}
+
+              </div>
+
+            `
 
             : ""
         }
 
       </div>
-
-
-      ${
-        record.address
-
-          ? `
-
-            <div class="record-meta">
-
-              🏠
-              ${escapeHtml(
-                record.address
-              )}
-
-            </div>
-
-          `
-
-          : ""
-      }
-
-
-      ${
-        record.note
-
-          ? `
-
-            <div class="record-note">
-
-              ${escapeHtml(
-                record.note
-              )}
-
-            </div>
-
-          `
-
-          : ""
-      }
 
 
       <div class="record-actions">
@@ -3146,6 +5277,113 @@ function footprintCardHtml(
 
 
 /* =========================================================
+   V2.2.2 DAILY SUMMARY
+========================================================= */
+
+function buildDailySummaryHtml(
+  dayRecords
+) {
+
+  if (
+    !dayRecords.length
+  ) {
+
+    return "";
+
+  }
+
+
+  const sorted =
+
+    [
+      ...dayRecords
+    ]
+    .sort(
+      (
+        a,
+        b
+      ) =>
+
+        new Date(
+          a.recorded_at
+        ) -
+
+        new Date(
+          b.recorded_at
+        )
+    );
+
+
+  const first =
+    sorted[
+      0
+    ];
+
+
+  const last =
+    sorted[
+      sorted.length -
+      1
+    ];
+
+
+  const distance =
+
+    calculateTrackedDayDistance(
+      sorted
+    );
+
+
+  return `
+
+    <div class="date-summary">
+
+      📍
+      ${sorted.length}
+      個足跡
+
+      ・
+
+      🚗 已追蹤移動
+      ${formatDistance(
+        distance
+      )}
+
+      <br>
+
+      🕐 第一筆
+      ${escapeHtml(
+        formatRecordTime(
+          first
+        )
+      )}
+
+      ・
+
+      最後一筆
+      ${escapeHtml(
+        formatRecordTime(
+          last
+        )
+      )}
+
+    </div>
+
+
+    <div class="date-type-summary">
+
+      ${buildDailyTypeSummaryHtml(
+        sorted
+      )}
+
+    </div>
+
+  `;
+
+}
+
+
+/* =========================================================
    RENDER LIST
 ========================================================= */
 
@@ -3161,6 +5399,24 @@ export function renderFootprints() {
     getDisplayFootprints();
 
 
+  /*
+    V2.2.2
+    統計跟目前篩選畫面一致
+  */
+
+  renderFootprintStats(
+    records
+  );
+
+
+  renderFootprintTripSummary();
+
+
+  renderFootprintSearchResultInfo(
+    records
+  );
+
+
   if (
     container
   ) {
@@ -3172,7 +5428,9 @@ export function renderFootprints() {
       container.innerHTML = `
 
         <div class="empty">
+
           尚無符合條件的足跡
+
         </div>
 
       `;
@@ -3181,55 +5439,16 @@ export function renderFootprints() {
     else {
 
       const groups =
-        new Map();
+        groupFootprintsByDay(
+          records
+        );
 
 
-      records.forEach(
-        record => {
-
-          const key =
-
-            getLocalDateString(
-
-              new Date(
-                record.recorded_at
-              )
-
-            );
-
-
-          if (
-            !groups.has(
-              key
-            )
-          ) {
-
-            groups.set(
-              key,
-              []
-            );
-
-          }
-
-
-          groups
-            .get(
-              key
-            )
-            .push(
-              record
-            );
-
-        }
-      );
-
-
-      container.innerHTML =
+      const dateKeys =
 
         [
           ...groups.keys()
         ]
-
         .sort(
           (
             a,
@@ -3238,88 +5457,118 @@ export function renderFootprints() {
             b.localeCompare(
               a
             )
-        )
-
-        .map(
-          date => {
-
-            const groupRecords =
-              groups.get(
-                date
-              );
+        );
 
 
-            const collapsed =
-              collapsedDates.has(
-                date
-              );
+      container.innerHTML =
+
+        dateKeys
+          .map(
+            date => {
+
+              const groupRecords =
+
+                [
+                  ...groups.get(
+                    date
+                  )
+                ]
+                .sort(
+                  (
+                    a,
+                    b
+                  ) =>
+
+                    new Date(
+                      a.recorded_at
+                    ) -
+
+                    new Date(
+                      b.recorded_at
+                    )
+                );
 
 
-            return `
+              const collapsed =
+                collapsedDates.has(
+                  date
+                );
 
-              <section
-                class="date-group ${
-                  collapsed
-                    ? "collapsed"
-                    : ""
-                }"
-              >
 
-                <button
-                  type="button"
-                  class="date-header"
-                  data-action="toggle-date"
+              return `
+
+                <section
+                  class="date-group ${
+                    collapsed
+                      ? "collapsed"
+                      : ""
+                  }"
                   data-date="${date}"
                 >
 
-                  <div>
+                  <button
+                    type="button"
+                    class="date-header"
+                    data-action="toggle-date"
+                    data-date="${date}"
+                  >
 
-                    <div class="date-title">
+                    <div>
 
-                      📅
-                      ${formatDateTitle(
-                        date
+                      <div class="date-title">
+
+                        📅
+                        ${formatDateTitle(
+                          date
+                        )}
+
+                      </div>
+
+
+                      ${buildDailySummaryHtml(
+                        groupRecords
                       )}
 
                     </div>
 
-                    <div class="date-summary">
 
-                      ${groupRecords.length}
-                      筆足跡
-
+                    <div class="date-toggle">
+                      ▼
                     </div>
 
+                  </button>
+
+
+                  <div class="date-records">
+
+                    ${groupRecords
+                      .map(
+                        (
+                          record,
+                          index
+                        ) =>
+
+                          footprintCardHtml(
+                            record,
+                            index +
+                            1
+                          )
+                      )
+                      .join(
+                        ""
+                      )}
+
                   </div>
 
-                  <div class="date-toggle">
-                    ▼
-                  </div>
+                </section>
 
-                </button>
+              `;
 
-
-                <div class="date-records">
-
-                  ${groupRecords
-                    .map(
-                      footprintCardHtml
-                    )
-                    .join(
-                      ""
-                    )}
-
-                </div>
-
-              </section>
-
-            `;
-
-          }
-        )
-        .join(
-          ""
-        );
+            }
+          )
+          .join(
+            ""
+          );
 
     }
 
@@ -3334,7 +5583,7 @@ export function renderFootprints() {
 
 
 /* =========================================================
-   MAP RENDER
+   V2.2.2 MAP RENDER
 ========================================================= */
 
 function renderFootprintMap(
@@ -3360,74 +5609,215 @@ function renderFootprintMap(
     .clearLayers();
 
 
+  markerByFootprintUid
+    .clear();
+
+
   const coordinates =
     [];
 
 
-  records.forEach(
-    record => {
-
-      if (
-        record.latitude ===
-          null ||
-        record.latitude ===
-          undefined ||
-        record.longitude ===
-          null ||
-        record.longitude ===
-          undefined
-      ) {
-
-        return;
-
-      }
+  const groups =
+    groupFootprintsByDay(
+      records
+    );
 
 
-      const lat =
-        Number(
-          record.latitude
+  const dateKeys =
+
+    [
+      ...groups.keys()
+    ]
+    .sort();
+
+
+  dateKeys.forEach(
+    dateKey => {
+
+      const dayRecords =
+
+        [
+          ...groups.get(
+            dateKey
+          )
+        ]
+        .sort(
+          (
+            a,
+            b
+          ) =>
+
+            new Date(
+              a.recorded_at
+            ) -
+
+            new Date(
+              b.recorded_at
+            )
         );
 
 
-      const lon =
-        Number(
-          record.longitude
-        );
+      dayRecords.forEach(
+        (
+          record,
+          index
+        ) => {
+
+          if (
+            record.latitude ===
+              null ||
+            record.latitude ===
+              undefined ||
+            record.longitude ===
+              null ||
+            record.longitude ===
+              undefined
+          ) {
+
+            return;
+
+          }
 
 
-      coordinates.push(
-        [
-          lat,
-          lon
-        ]
-      );
+          const lat =
+            Number(
+              record.latitude
+            );
 
 
-      const type =
-
-        FOOTPRINT_TYPES[
-          record.type
-        ] ||
-
-        FOOTPRINT_TYPES.other;
+          const lon =
+            Number(
+              record.longitude
+            );
 
 
-      L.marker(
-        [
-          lat,
-          lon
-        ]
-      )
-      .bindPopup(
+          if (
+            !Number.isFinite(
+              lat
+            ) ||
+            !Number.isFinite(
+              lon
+            )
+          ) {
 
-        `<strong>${type.icon} ${escapeHtml(
-          record.place_name ||
-          ""
-        )}</strong>`
+            return;
 
-      )
-      .addTo(
-        markerLayer
+          }
+
+
+          const sequenceNumber =
+            index +
+            1;
+
+
+          const type =
+
+            FOOTPRINT_TYPES[
+              record.type
+            ] ||
+
+            FOOTPRINT_TYPES.other;
+
+
+          const marker =
+
+            L.marker(
+              [
+                lat,
+                lon
+              ],
+              {
+
+                icon:
+                  createNumberedMarkerIcon(
+                    sequenceNumber
+                  )
+
+              }
+            )
+
+            .bindPopup(
+              `
+
+                <strong>
+
+                  ${sequenceNumber}.
+                  ${type.icon}
+                  ${escapeHtml(
+                    record.place_name ||
+                    "未命名地點"
+                  )}
+
+                </strong>
+
+                <br>
+
+                ${escapeHtml(
+                  type.label
+                )}
+
+                <br>
+
+                🧳
+                ${escapeHtml(
+                  getTripName(
+                    record.trip_client_uid
+                  )
+                )}
+
+                <br>
+
+                ${escapeHtml(
+                  dateKey
+                )}
+
+                ${escapeHtml(
+                  formatRecordTime(
+                    record
+                  )
+                )}
+
+              `
+            )
+
+            .addTo(
+              markerLayer
+            );
+
+
+          /*
+            Map → Record
+          */
+
+          marker.on(
+            "click",
+            () => {
+
+              scrollToFootprintRecord(
+                record.client_uid
+              );
+
+            }
+          );
+
+
+          markerByFootprintUid
+            .set(
+              String(
+                record.client_uid
+              ),
+              marker
+            );
+
+
+          coordinates.push(
+            [
+              lat,
+              lon
+            ]
+          );
+
+        }
       );
 
     }
@@ -3447,6 +5837,7 @@ function renderFootprintMap(
       .fitBounds(
         coordinates,
         {
+
           padding:
             [
               30,
@@ -3454,7 +5845,8 @@ function renderFootprintMap(
             ],
 
           maxZoom:
-            17
+            16
+
         }
       );
 
@@ -3464,173 +5856,15 @@ function renderFootprintMap(
 
 
 /* =========================================================
-   DAILY ROUTE
+   V2.2.2 ROUTE RENDER
 ========================================================= */
 
 function renderRoutes(
   records
 ) {
 
-  const groups =
-    new Map();
-
-
-  records
-
-    .filter(
-      record =>
-
-        Number(
-          record.link_tracked
-        ) !==
-        0 &&
-
-        record.latitude !==
-          null &&
-
-        record.latitude !==
-          undefined &&
-
-        record.longitude !==
-          null &&
-
-        record.longitude !==
-          undefined
-
-    )
-
-    .forEach(
-      record => {
-
-        const date =
-
-          getLocalDateString(
-
-            new Date(
-              record.recorded_at
-            )
-
-          );
-
-
-        const tripKey =
-
-          record.trip_client_uid ||
-          "__unclassified__";
-
-
-        const key =
-
-          date +
-          "|" +
-          tripKey;
-
-
-        if (
-          !groups.has(
-            key
-          )
-        ) {
-
-          groups.set(
-            key,
-            []
-          );
-
-        }
-
-
-        groups
-          .get(
-            key
-          )
-          .push(
-            record
-          );
-
-      }
-    );
-
-
-  for (
-    const group of
-    groups.values()
-  ) {
-
-    group.sort(
-      (
-        a,
-        b
-      ) =>
-
-        new Date(
-          a.recorded_at
-        ) -
-
-        new Date(
-          b.recorded_at
-        )
-
-    );
-
-
-    if (
-      group.length <
-      2
-    ) {
-
-      continue;
-
-    }
-
-
-    const points =
-
-      group.map(
-        record => [
-
-          Number(
-            record.latitude
-          ),
-
-          Number(
-            record.longitude
-          )
-
-        ]
-      );
-
-
-    L.polyline(
-      points,
-      {
-        weight:
-          4,
-
-        opacity:
-          0.7
-      }
-    )
-    .addTo(
-      routeLayer
-    );
-
-  }
-
-}
-
-/* =========================================================
-   EVENT BINDING
-========================================================= */
-
-let eventsBound =
-  false;
-
-
-function bindFootprintEvents() {
-
   if (
-    eventsBound
+    !routeLayer
   ) {
 
     return;
@@ -3638,89 +5872,234 @@ function bindFootprintEvents() {
   }
 
 
-  eventsBound =
-    true;
+  const displayIds =
+
+    new Set(
+
+      records.map(
+        record =>
+          String(
+            record.client_uid
+          )
+      )
+
+    );
 
 
-  el(
-    "footprintGpsButton"
-  )
-  ?.addEventListener(
-    "click",
-    getFootprintGPS
-  );
-
-
-  el(
-    "saveFootprintButton"
-  )
-  ?.addEventListener(
-    "click",
-    saveFootprint
-  );
-
-
-  el(
-    "cancelFootprintEditButton"
-  )
-  ?.addEventListener(
-    "click",
-    resetFootprintForm
-  );
-
-
-  el(
-    "footprintSearch"
-  )
-  ?.addEventListener(
-    "input",
-    renderFootprints
-  );
-
-
-  el(
-    "footprintTypeFilter"
-  )
-  ?.addEventListener(
-    "change",
-    renderFootprints
-  );
-
-
-  el(
-    "footprintScopeFilter"
-  )
-  ?.addEventListener(
-    "change",
-    renderFootprints
-  );
-
-
-  el(
-    "footprintTrip"
-  )
-  ?.addEventListener(
-    "change",
-    () => {
+  records.forEach(
+    record => {
 
       if (
-        el(
-          "footprintScopeFilter"
-        )
-        ?.value ===
-        "trip"
+        Number(
+          record.link_tracked
+        ) ===
+        0
       ) {
 
-        renderFootprints();
+        return;
 
       }
+
+
+      const link =
+        getPreviousLinkState(
+          record
+        );
+
+
+      if (
+        link.state !==
+        "valid"
+      ) {
+
+        return;
+
+      }
+
+
+      const previous =
+        link.previous;
+
+
+      /*
+        前一筆也必須在目前畫面篩選結果裡
+      */
+
+      if (
+        !displayIds.has(
+          String(
+            previous.client_uid
+          )
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      /*
+        必須同一旅程
+      */
+
+      if (
+        String(
+          previous.trip_client_uid ||
+          ""
+        ) !==
+        String(
+          record.trip_client_uid ||
+          ""
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      /*
+        必須同一天
+      */
+
+      const previousDate =
+
+        getLocalDateString(
+
+          new Date(
+            previous.recorded_at
+          )
+
+        );
+
+
+      const currentDate =
+
+        getLocalDateString(
+
+          new Date(
+            record.recorded_at
+          )
+
+        );
+
+
+      if (
+        previousDate !==
+        currentDate
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        previous.latitude ===
+          null ||
+        previous.latitude ===
+          undefined ||
+        previous.longitude ===
+          null ||
+        previous.longitude ===
+          undefined ||
+        record.latitude ===
+          null ||
+        record.latitude ===
+          undefined ||
+        record.longitude ===
+          null ||
+        record.longitude ===
+          undefined
+      ) {
+
+        return;
+
+      }
+
+
+      const lat1 =
+        Number(
+          previous.latitude
+        );
+
+
+      const lon1 =
+        Number(
+          previous.longitude
+        );
+
+
+      const lat2 =
+        Number(
+          record.latitude
+        );
+
+
+      const lon2 =
+        Number(
+          record.longitude
+        );
+
+
+      if (
+        !Number.isFinite(
+          lat1
+        ) ||
+        !Number.isFinite(
+          lon1
+        ) ||
+        !Number.isFinite(
+          lat2
+        ) ||
+        !Number.isFinite(
+          lon2
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      L.polyline(
+        [
+          [
+            lat1,
+            lon1
+          ],
+          [
+            lat2,
+            lon2
+          ]
+        ],
+        {
+
+          weight:
+            4,
+
+          opacity:
+            0.7
+
+        }
+      )
+      .addTo(
+        routeLayer
+      );
 
     }
   );
 
+}
+
+/* =========================================================
+   EVENT BINDING
+========================================================= */
+
+function bindFootprintEvents() {
 
   /* =====================================================
-     TYPE GRID
+     TYPE BUTTON
   ===================================================== */
 
   el(
@@ -3731,7 +6110,6 @@ function bindFootprintEvents() {
     event => {
 
       const button =
-
         event.target.closest(
           "[data-footprint-type]"
         );
@@ -3755,6 +6133,23 @@ function bindFootprintEvents() {
 
 
   /* =====================================================
+     GPS
+  ===================================================== */
+
+  el(
+    "footprintGpsButton"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+
+      await getFootprintGPS();
+
+    }
+  );
+
+
+  /* =====================================================
      NEARBY
   ===================================================== */
 
@@ -3766,7 +6161,6 @@ function bindFootprintEvents() {
     event => {
 
       const button =
-
         event.target.closest(
           "[data-nearby-index]"
         );
@@ -3781,12 +6175,25 @@ function bindFootprintEvents() {
       }
 
 
-      selectNearbyPlace(
-
+      const index =
         Number(
           button.dataset.nearbyIndex
-        )
+        );
 
+
+      if (
+        !Number.isInteger(
+          index
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      selectNearbyPlace(
+        index
       );
 
     }
@@ -3794,7 +6201,160 @@ function bindFootprintEvents() {
 
 
   /* =====================================================
-     LIST
+     SAVE
+  ===================================================== */
+
+  el(
+    "saveFootprintButton"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+
+      try {
+
+        await saveFootprint();
+
+      }
+      catch (
+        error
+      ) {
+
+        console.error(
+          "Save footprint error:",
+          error
+        );
+
+
+        hooks.showMessage(
+
+          error?.message ||
+          "儲存足跡失敗",
+
+          "error"
+
+        );
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     CANCEL EDIT
+  ===================================================== */
+
+  el(
+    "cancelFootprintEditButton"
+  )
+  ?.addEventListener(
+    "click",
+    () => {
+
+      resetFootprintForm();
+
+      hooks.showToast(
+        "已取消編輯"
+      );
+
+    }
+  );
+
+
+  /* =====================================================
+     SEARCH
+  ===================================================== */
+
+  el(
+    "footprintSearch"
+  )
+  ?.addEventListener(
+    "input",
+    () => {
+
+      renderFootprints();
+
+    }
+  );
+
+
+  /* =====================================================
+     SCOPE FILTER
+  ===================================================== */
+
+  el(
+    "footprintScopeFilter"
+  )
+  ?.addEventListener(
+    "change",
+    () => {
+
+      renderFootprints();
+
+    }
+  );
+
+
+  /* =====================================================
+     TYPE FILTER
+  ===================================================== */
+
+  el(
+    "footprintTypeFilter"
+  )
+  ?.addEventListener(
+    "change",
+    () => {
+
+      renderFootprints();
+
+    }
+  );
+
+
+  /* =====================================================
+     TRIP CHANGE
+  ===================================================== */
+
+  el(
+    "footprintTrip"
+  )
+  ?.addEventListener(
+    "change",
+    () => {
+
+      /*
+        旅程摘要永遠跟著目前
+        footprintTrip 選項更新。
+      */
+
+      renderFootprintTripSummary();
+
+
+      /*
+        如果篩選目前就是「目前旅程」，
+        旅程切換後清單 / 地圖也一起更新。
+      */
+
+      if (
+        el(
+          "footprintScopeFilter"
+        )
+        ?.value ===
+        "trip"
+      ) {
+
+        renderFootprints();
+
+      }
+
+    }
+  );
+
+
+  /* =====================================================
+     LIST DELEGATION
   ===================================================== */
 
   el(
@@ -3802,17 +6362,16 @@ function bindFootprintEvents() {
   )
   ?.addEventListener(
     "click",
-    event => {
+    async event => {
 
-      const button =
-
+      const actionElement =
         event.target.closest(
-          "button[data-action]"
+          "[data-action]"
         );
 
 
       if (
-        !button
+        !actionElement
       ) {
 
         return;
@@ -3821,8 +6380,16 @@ function bindFootprintEvents() {
 
 
       const action =
-        button.dataset.action;
+        actionElement.dataset.action;
 
+
+      const clientUid =
+        actionElement.dataset.clientUid;
+
+
+      /* =================================================
+         DATE TOGGLE
+      ================================================= */
 
       if (
         action ===
@@ -3830,7 +6397,22 @@ function bindFootprintEvents() {
       ) {
 
         const date =
-          button.dataset.date;
+          actionElement.dataset.date;
+
+
+        if (
+          !date
+        ) {
+
+          return;
+
+        }
+
+
+        const group =
+          actionElement.closest(
+            ".date-group"
+          );
 
 
         if (
@@ -3843,6 +6425,13 @@ function bindFootprintEvents() {
             date
           );
 
+
+          group
+            ?.classList
+            .remove(
+              "collapsed"
+            );
+
         }
         else {
 
@@ -3850,10 +6439,14 @@ function bindFootprintEvents() {
             date
           );
 
+
+          group
+            ?.classList
+            .add(
+              "collapsed"
+            );
+
         }
-
-
-        renderFootprints();
 
 
         return;
@@ -3861,35 +6454,180 @@ function bindFootprintEvents() {
       }
 
 
-      const clientUid =
-        button.dataset.clientUid;
+      /* =================================================
+         RECORD → MAP
+      ================================================= */
 
+      if (
+        action ===
+        "focus-footprint"
+      ) {
+
+        if (
+          clientUid
+        ) {
+
+          focusFootprintOnMap(
+            clientUid
+          );
+
+        }
+
+
+        return;
+
+      }
+
+
+      /* =================================================
+         EDIT
+      ================================================= */
 
       if (
         action ===
         "edit-footprint"
       ) {
 
-        editFootprint(
+        if (
           clientUid
-        );
+        ) {
+
+          editFootprint(
+            clientUid
+          );
+
+        }
+
+
+        return;
 
       }
 
+
+      /* =================================================
+         DELETE
+      ================================================= */
 
       if (
         action ===
         "delete-footprint"
       ) {
 
-        deleteFootprint(
-          clientUid
-        );
+        if (
+          !clientUid
+        ) {
+
+          return;
+
+        }
+
+
+        try {
+
+          await deleteFootprint(
+            clientUid
+          );
+
+        }
+        catch (
+          error
+        ) {
+
+          console.error(
+            "Delete footprint error:",
+            error
+          );
+
+
+          hooks.showMessage(
+
+            error?.message ||
+            "刪除足跡失敗",
+
+            "error"
+
+          );
+
+        }
+
+
+        return;
 
       }
 
     }
   );
 
-}
 
+  /* =====================================================
+     LATEST RECORD
+  ===================================================== */
+
+  el(
+    "jumpToLatestFootprintButton"
+  )
+  ?.addEventListener(
+    "click",
+    () => {
+
+      jumpToLatestFootprint();
+
+    }
+  );
+
+
+  /* =====================================================
+     BACK TO MAP
+  ===================================================== */
+
+  el(
+    "backToFootprintMapButton"
+  )
+  ?.addEventListener(
+    "click",
+    () => {
+
+      scrollBackToFootprintMap();
+
+    }
+  );
+
+
+  /* =====================================================
+     DEFAULT DATE / TIME
+  ===================================================== */
+
+  const dateInput =
+    el(
+      "footprintDate"
+    );
+
+
+  if (
+    dateInput &&
+    !dateInput.value
+  ) {
+
+    dateInput.value =
+      getLocalDateString();
+
+  }
+
+
+  const timeInput =
+    el(
+      "footprintTime"
+    );
+
+
+  if (
+    timeInput &&
+    !timeInput.value
+  ) {
+
+    timeInput.value =
+      getLocalTimeString();
+
+  }
+
+}
