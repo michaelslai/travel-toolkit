@@ -12,6 +12,11 @@
    - 保留 Auto Sync ON / OFF
    - 保留 Manual Force Sync
    - 不直接操作 DOM
+
+   Debug Revision: D1
+   - 加入 Sync Queue / Push Upsert / Push Delete debug log
+   - 加入 Pull Merge / Keep Local / Accept Server debug log
+   - 僅增加 Console 可觀測性，不修改同步行為
 ========================================================= */
 
 import {
@@ -64,6 +69,47 @@ let syncRunning =
 
 let autoSyncEnabled =
   true;
+
+
+/* =========================================================
+   SYNC DEBUG
+
+   Debug Revision D1:
+   - 只輸出 Console log
+   - 不修改任何 sync / queue / merge 行為
+========================================================= */
+
+const SYNC_DEBUG =
+  true;
+
+
+function syncDebug(
+  action,
+  data = {}
+) {
+
+  if (
+    !SYNC_DEBUG
+  ) {
+
+    return;
+
+  }
+
+
+  console.log(
+    `%c[SYNC ${action}]`,
+    "color:#2563eb;font-weight:bold",
+    {
+      time:
+        new Date()
+          .toISOString(),
+
+      ...data
+    }
+  );
+
+}
 
 
 /* =========================================================
@@ -398,9 +444,9 @@ async function serverRecordToLocal(
 
   if (
     entity ===
-    "expenses" &&
+      "expenses" &&
     serverRecord.source_type ===
-    "food"
+      "food"
   ) {
 
     local.source_client_uid =
@@ -679,9 +725,9 @@ async function reconcileCanonicalUid(
 
       if (
         record.source_type !==
-        "food" ||
+          "food" ||
         record.source_client_uid !==
-        originalUid
+          originalUid
       ) {
 
         continue;
@@ -745,6 +791,58 @@ async function mergeServerRecord(
     );
 
 
+  syncDebug(
+    "PULL MERGE",
+    {
+      entity,
+
+      client_uid:
+        serverRecord.client_uid,
+
+      cloud_id:
+        serverRecord.id ??
+        serverRecord.cloud_id ??
+        null,
+
+      server_updated_at:
+        serverRecord.updated_at ??
+        null,
+
+      server_deleted_at:
+        serverRecord.deleted_at ??
+        null,
+
+      local_updated_at:
+        existing?.updated_at ??
+        null,
+
+      local_deleted_at:
+        existing?.deleted_at ??
+        null,
+
+      local_sync_status:
+        existing?.sync_status ??
+        null,
+
+      place_name:
+        serverRecord.place_name ??
+        null,
+
+      shop_name:
+        serverRecord.shop_name ??
+        null,
+
+      title:
+        serverRecord.title ??
+        null,
+
+      name:
+        serverRecord.name ??
+        null
+    }
+  );
+
+
   const serverTime =
     parseSyncTime(
       serverRecord.updated_at
@@ -782,6 +880,42 @@ async function mergeServerRecord(
     serverTime
   ) {
 
+    syncDebug(
+      "PULL KEEP LOCAL",
+      {
+        entity,
+
+        client_uid:
+          existing.client_uid,
+
+        cloud_id:
+          existing.cloud_id ??
+          serverRecord.id ??
+          null,
+
+        local_updated_at:
+          existing.updated_at ??
+          null,
+
+        server_updated_at:
+          serverRecord.updated_at ??
+          null,
+
+        local_deleted_at:
+          existing.deleted_at ??
+          null,
+
+        server_deleted_at:
+          serverRecord.deleted_at ??
+          null,
+
+        local_sync_status:
+          existing.sync_status ??
+          null
+      }
+    );
+
+
     return;
 
   }
@@ -792,6 +926,46 @@ async function mergeServerRecord(
       entity,
       serverRecord
     );
+
+
+  syncDebug(
+    "PULL ACCEPT SERVER",
+    {
+      entity,
+
+      client_uid:
+        serverRecord.client_uid,
+
+      cloud_id:
+        serverRecord.id ??
+        serverRecord.cloud_id ??
+        null,
+
+      updated_at:
+        serverRecord.updated_at ??
+        null,
+
+      deleted_at:
+        serverRecord.deleted_at ??
+        null,
+
+      place_name:
+        serverRecord.place_name ??
+        null,
+
+      shop_name:
+        serverRecord.shop_name ??
+        null,
+
+      title:
+        serverRecord.title ??
+        null,
+
+      name:
+        serverRecord.name ??
+        null
+    }
+  );
 
 
   await dbPut(
@@ -900,8 +1074,6 @@ function prepareSyncData(
   return data;
 
 }
-
-
 /* =========================================================
    UPSERT ONE QUEUE ITEM
 ========================================================= */
@@ -980,6 +1152,46 @@ async function syncUpsertItem(
   );
 
 
+  syncDebug(
+    "PUSH UPSERT",
+    {
+      entity:
+        queueItem.entity,
+
+      client_uid:
+        record.client_uid,
+
+      cloud_id:
+        record.cloud_id ??
+        null,
+
+      updated_at:
+        record.updated_at ??
+        null,
+
+      deleted_at:
+        record.deleted_at ??
+        null,
+
+      place_name:
+        record.place_name ??
+        null,
+
+      shop_name:
+        record.shop_name ??
+        null,
+
+      title:
+        record.title ??
+        null,
+
+      name:
+        record.name ??
+        null
+    }
+  );
+
+
   const result =
     await api(
       "/api/sync/upsert",
@@ -1015,6 +1227,25 @@ async function syncUpsertItem(
 
       }
     );
+
+
+  syncDebug(
+    "PUSH UPSERT RESULT",
+    {
+      entity:
+        queueItem.entity,
+
+      client_uid:
+        record.client_uid,
+
+      cloud_id:
+        result.cloud_id ??
+        result.record?.id ??
+        null,
+
+      result
+    }
+  );
 
 
   /*
@@ -1137,6 +1368,46 @@ async function syncDeleteItem(
   );
 
 
+  syncDebug(
+    "PUSH DELETE",
+    {
+      entity:
+        queueItem.entity,
+
+      client_uid:
+        record.client_uid,
+
+      cloud_id:
+        record.cloud_id ??
+        null,
+
+      updated_at:
+        record.updated_at ??
+        null,
+
+      deleted_at:
+        record.deleted_at ??
+        null,
+
+      place_name:
+        record.place_name ??
+        null,
+
+      shop_name:
+        record.shop_name ??
+        null,
+
+      title:
+        record.title ??
+        null,
+
+      name:
+        record.name ??
+        null
+    }
+  );
+
+
   const result =
     await api(
       "/api/sync/delete",
@@ -1168,13 +1439,32 @@ async function syncDeleteItem(
     );
 
 
+  syncDebug(
+    "PUSH DELETE RESULT",
+    {
+      entity:
+        queueItem.entity,
+
+      client_uid:
+        record.client_uid,
+
+      cloud_id:
+        result.cloud_id ??
+        result.record?.id ??
+        null,
+
+      result
+    }
+  );
+
+
   /*
     Server 版本較新。
   */
 
   if (
     result.result ===
-    "server_wins" &&
+      "server_wins" &&
     result.record
   ) {
 
@@ -1295,6 +1585,45 @@ export async function pushPendingChanges() {
     );
 
 
+  syncDebug(
+    "QUEUE",
+    {
+      count:
+        queue.length,
+
+      items:
+        queue.map(
+          item => ({
+            entity:
+              item.entity,
+
+            client_uid:
+              item.client_uid,
+
+            action:
+              item.action,
+
+            retry_count:
+              item.retry_count ??
+              0,
+
+            last_error:
+              item.last_error ??
+              null,
+
+            created_at:
+              item.created_at ??
+              null,
+
+            updated_at:
+              item.updated_at ??
+              null
+          })
+        )
+    }
+  );
+
+
   if (
     !queue.length
   ) {
@@ -1408,6 +1737,27 @@ export async function pushPendingChanges() {
       );
 
 
+      syncDebug(
+        "PUSH ERROR",
+        {
+          entity:
+            item.entity,
+
+          client_uid:
+            item.client_uid,
+
+          action:
+            item.action,
+
+          error:
+            error?.message ??
+            String(
+              error
+            )
+        }
+      );
+
+
       await markQueueError(
         item,
         error
@@ -1443,6 +1793,42 @@ export async function pullCloudChanges() {
       )
 
     );
+
+
+  syncDebug(
+    "PULL CHANGES",
+    {
+      since,
+
+      server_time:
+        result.server_time ??
+        null,
+
+      trips:
+        (
+          result.trips ||
+          []
+        ).length,
+
+      footprints:
+        (
+          result.footprints ||
+          []
+        ).length,
+
+      food_records:
+        (
+          result.food_records ||
+          []
+        ).length,
+
+      expenses:
+        (
+          result.expenses ||
+          []
+        ).length
+    }
+  );
 
 
   /* =====================================================
@@ -1624,7 +2010,6 @@ export async function pullCloudChanges() {
   return result;
 
 }
-
 
 /* =========================================================
    CLOUD CONNECTION TEST
@@ -1854,6 +2239,18 @@ export async function syncNow(
   );
 
 
+  syncDebug(
+    "SYNC START",
+    {
+      manual:
+        options.manual ===
+        true,
+
+      force
+    }
+  );
+
+
   try {
 
     /*
@@ -1885,6 +2282,18 @@ export async function syncNow(
 
     const snapshot =
       await getSyncStatusSnapshot();
+
+
+    syncDebug(
+      "SYNC SUCCESS",
+      {
+        manual:
+          options.manual ===
+          true,
+
+        snapshot
+      }
+    );
 
 
     hooks.onSyncState(
@@ -1934,6 +2343,20 @@ export async function syncNow(
       await getSyncStatusSnapshot();
 
 
+    syncDebug(
+      "SYNC ERROR",
+      {
+        error:
+          error?.message ??
+          String(
+            error
+          ),
+
+        snapshot
+      }
+    );
+
+
     hooks.onSyncState(
       {
         type:
@@ -1974,6 +2397,15 @@ export async function syncNow(
 
     syncRunning =
       false;
+
+
+    syncDebug(
+      "SYNC END",
+      {
+        running:
+          syncRunning
+      }
+    );
 
   }
 
@@ -2038,11 +2470,49 @@ export async function deleteAndSync(
   clientUid
 ) {
 
+  syncDebug(
+    "DELETE REQUEST",
+    {
+      entity,
+
+      client_uid:
+        clientUid
+    }
+  );
+
+
   const deleted =
     await softDeleteLocalRecord(
       entity,
       clientUid
     );
+
+
+  syncDebug(
+    "DELETE LOCAL TOMBSTONE",
+    {
+      entity,
+
+      client_uid:
+        clientUid,
+
+      deleted_at:
+        deleted?.deleted_at ??
+        null,
+
+      updated_at:
+        deleted?.updated_at ??
+        null,
+
+      sync_status:
+        deleted?.sync_status ??
+        null,
+
+      cloud_id:
+        deleted?.cloud_id ??
+        null
+    }
+  );
 
 
   hooks.onDataChanged();
@@ -2083,6 +2553,44 @@ export async function retryAllErrors() {
     await dbGetAll(
       STORE_SYNC_QUEUE
     );
+
+
+  syncDebug(
+    "RETRY ERRORS",
+    {
+      total_queue:
+        queue.length,
+
+      error_items:
+        queue
+          .filter(
+            item =>
+              Boolean(
+                item.last_error
+              )
+          )
+          .map(
+            item => ({
+              entity:
+                item.entity,
+
+              client_uid:
+                item.client_uid,
+
+              action:
+                item.action,
+
+              retry_count:
+                item.retry_count ??
+                0,
+
+              last_error:
+                item.last_error ??
+                null
+            })
+          )
+    }
+  );
 
 
   for (
@@ -2165,7 +2673,6 @@ export async function retryAllErrors() {
 
 }
 
-
 /* =========================================================
    NETWORK HELPERS
 ========================================================= */
@@ -2204,6 +2711,15 @@ window.addEventListener(
     );
 
 
+    syncDebug(
+      "NETWORK ONLINE",
+      {
+        auto_sync_enabled:
+          autoSyncEnabled
+      }
+    );
+
+
     const cloud =
       await testCloudConnection();
 
@@ -2237,6 +2753,12 @@ window.addEventListener(
         type:
           "network-offline"
       }
+    );
+
+
+    syncDebug(
+      "NETWORK OFFLINE",
+      {}
     );
 
 
