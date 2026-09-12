@@ -242,8 +242,6 @@ export function setFoodData(
     [];
 
 
-  renderFoodRecords();
-
 }
 
 
