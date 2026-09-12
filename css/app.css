@@ -1,5 +1,5 @@
 /* =========================================================
-   Travel Toolkit V2.2.2 Modular
+   Travel Toolkit V2.2.3 Modular
    File: css/app.css
    Modified: 2026-09-12
 
@@ -2413,6 +2413,558 @@ textarea {
 
     font-size:
       12px;
+  }
+
+}
+
+/* =========================================================
+   Travel Toolkit V2.2.3
+   File: css/app.css
+   Food Feature Parity
+
+   Added:
+   - Food Summary
+   - Food Search / Filter
+   - Nearby Shops
+   - Food Photo Preview
+   - Food Date Groups
+   - Food Record Cards
+   - Food Edit Indicator
+========================================================= */
+
+
+/* =========================================================
+   FOOD SUMMARY
+========================================================= */
+
+.food-summary-card {
+  padding: 16px;
+}
+
+
+.food-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+
+.food-summary-item {
+  padding: 13px;
+  background: #faf8f3;
+  border-radius: 14px;
+}
+
+
+.food-summary-label {
+  color: #777;
+  font-size: 12px;
+}
+
+
+.food-summary-value {
+  margin-top: 5px;
+  font-size: 21px;
+  font-weight: 750;
+}
+
+
+.food-summary-rating {
+  color: #f2a900;
+}
+
+
+/* =========================================================
+   FOOD SEARCH
+========================================================= */
+
+.food-search-card {
+  padding: 14px;
+}
+
+
+.food-search-wrap {
+  position: relative;
+}
+
+
+.food-search-input {
+  padding-left: 42px;
+}
+
+
+.food-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #888;
+  pointer-events: none;
+}
+
+
+.food-search-result-info {
+  margin-top: 8px;
+  color: #777;
+  font-size: 12px;
+}
+
+
+/* =========================================================
+   FOOD FILTER STATUS
+========================================================= */
+
+.food-filter-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #faf8f3;
+  border-radius: 10px;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+
+.food-filter-toggle {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px;
+  background: #f1f1f1;
+  color: #444;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+
+.food-filter-toggle.open {
+  background: #fff0ea;
+  color: #c74e2a;
+}
+
+
+/* =========================================================
+   FOOD FILTER PANEL
+========================================================= */
+
+.food-filter-panel {
+  display: none;
+  margin-top: 14px;
+  padding-top: 2px;
+}
+
+
+.food-filter-panel.open {
+  display: block;
+}
+
+
+.food-filter-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #eee;
+}
+
+
+.food-filter-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+
+.food-filter-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #555;
+}
+
+
+.food-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+
+.food-filter-chip {
+  padding: 8px 11px;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  background: #f7f7f7;
+  color: #555;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+
+.food-filter-chip.active {
+  border-color: #e96c43;
+  background: #fff0ea;
+  color: #c74e2a;
+  font-weight: 700;
+}
+
+
+.food-filter-chip.recommend.active {
+  border-color: #e7b800;
+  background: #fff5c9;
+  color: #8b6700;
+}
+
+
+.food-filter-clear {
+  display: none;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  background: #f1f1f1;
+  color: #555;
+  font-size: 13px;
+}
+
+
+.food-filter-clear.show {
+  display: block;
+}
+
+
+/* =========================================================
+   FOOD EDIT INDICATOR
+========================================================= */
+
+.food-edit-indicator {
+  display: none;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #fff5d9;
+  border-radius: 10px;
+  color: #805e00;
+  font-size: 14px;
+}
+
+
+/* =========================================================
+   FOOD TIMEZONE
+========================================================= */
+
+.timezone-text {
+  margin-top: 7px;
+  color: #777;
+  font-size: 13px;
+}
+
+
+/* =========================================================
+   FOOD NEARBY
+========================================================= */
+
+.food-nearby-wrap {
+  display: none;
+  margin-top: 13px;
+  margin-bottom: 13px;
+}
+
+
+.food-nearby-title {
+  margin-bottom: 5px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+
+.food-nearby-note {
+  margin-bottom: 9px;
+  color: #888;
+  font-size: 12px;
+}
+
+
+.food-nearby-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+
+.food-nearby-item {
+  width: 100%;
+  padding: 11px 12px;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 12px;
+  text-align: left;
+}
+
+
+.food-nearby-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+
+.food-nearby-meta {
+  display: block;
+  margin-top: 4px;
+  color: #777;
+  font-size: 12px;
+}
+
+
+.food-selected-shop {
+  display: none;
+  margin-top: 7px;
+  color: #31724a;
+  font-size: 13px;
+}
+
+
+/* =========================================================
+   FOOD RECOMMEND
+========================================================= */
+
+.food-recommend-row {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fff8dd;
+  border-radius: 12px;
+}
+
+
+/* =========================================================
+   FOOD PHOTO
+========================================================= */
+
+.food-photo-note {
+  margin-top: 6px;
+  color: #888;
+  font-size: 12px;
+}
+
+
+.food-photo-preview-wrap {
+  display: none;
+  margin-top: 10px;
+}
+
+
+.food-photo-preview-wrap.show {
+  display: block;
+}
+
+
+.food-photo-preview {
+  display: block;
+  width: 100%;
+  max-height: 430px;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+
+.food-photo-remove {
+  width: 100%;
+  margin-top: 8px;
+}
+
+
+/* =========================================================
+   FOOD SOURCE NOTE
+========================================================= */
+
+.food-source-note {
+  margin-top: 14px;
+  color: #999;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+
+/* =========================================================
+   FOOD DATE GROUP
+========================================================= */
+
+.food-date-group {
+  margin-bottom: 14px;
+}
+
+
+.food-date-header {
+  width: 100%;
+  padding: 14px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow:
+    0
+    3px
+    14px
+    rgba(
+      0,
+      0,
+      0,
+      .05
+    );
+  text-align: left;
+}
+
+
+.food-date-title {
+  font-size: 17px;
+  font-weight: 750;
+}
+
+
+.food-date-summary {
+  margin-top: 4px;
+  color: #777;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+
+.food-date-toggle {
+  flex: 0 0 auto;
+  color: #777;
+  font-size: 18px;
+  transition: transform .2s;
+}
+
+
+.food-date-group.collapsed
+.food-date-toggle {
+  transform: rotate(-90deg);
+}
+
+
+.food-date-records {
+  margin-top: 10px;
+}
+
+
+.food-date-group.collapsed
+.food-date-records {
+  display: none;
+}
+
+
+/* =========================================================
+   FOOD RECORD CARD
+========================================================= */
+
+.food-record-store {
+  margin-top: 2px;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+
+.food-record-food {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+
+.food-record-photo {
+  display: block;
+  width: 100%;
+  max-height: 430px;
+  margin: 12px 0;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+
+.food-record-stars {
+  margin-top: 7px;
+  color: #f6b800;
+  font-size: 20px;
+  letter-spacing: 1px;
+}
+
+
+.food-record-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+
+.food-record-tag {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #f1f1f1;
+  color: #555;
+  font-size: 12px;
+}
+
+
+.food-record-tag.recommended {
+  background: #fff2bd;
+  color: #8a6200;
+  font-weight: 700;
+}
+
+
+.food-record-money {
+  margin-top: 9px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+
+.food-record-address {
+  margin-top: 9px;
+  padding: 10px;
+  background: #f4faf4;
+  border-radius: 10px;
+  color: #4b604b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+
+/* =========================================================
+   FOOD MOBILE
+========================================================= */
+
+@media (
+  max-width: 450px
+) {
+
+  .food-summary-grid {
+    grid-template-columns:
+      1fr
+      1fr;
+  }
+
+
+  .food-summary-value {
+    font-size: 19px;
+  }
+
+
+  .food-filter-chip {
+    font-size: 12px;
+  }
+
+
+  .food-record-store {
+    font-size: 20px;
+  }
+
+
+  .food-record-photo {
+    max-height: 360px;
   }
 
 }
