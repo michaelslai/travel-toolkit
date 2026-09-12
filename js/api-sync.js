@@ -927,6 +927,13 @@ async function mergeServerRecord(
       serverRecord
     );
 
+if (
+  entity === "food_records" &&
+  existing?.photo_local
+) {
+  local.photo_local =
+    existing.photo_local;
+}   
 
   syncDebug(
     "PULL ACCEPT SERVER",
@@ -1011,9 +1018,15 @@ function prepareSyncData(
     Local-only fields
   */
 
-  delete data.sync_status;
+delete data.sync_status;
+delete data.cloud_id;
 
-  delete data.cloud_id;
+/*
+  V2.2.3
+  Local-only food photo.
+  不送到 D1 / Worker。
+*/
+delete data.photo_local;
 
 
   /*
