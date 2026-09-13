@@ -1,17 +1,26 @@
 /* =========================================================
-   Travel Toolkit V2.3.0 Modular
+   Travel Toolkit V2.4.0 Modular
    File: js/main.js
    Modified: 2026-09-13
 
+   【V2.4.0 R2 Photo Sync】
+   - 保留 V2.3.0 Cloud Authorization
+   - 新增 Cloudflare R2 readiness 檢查
+   - Authorization 成功後檢查 D1 + R2
+   - R2 狀態只影響照片雲端功能，不阻斷既有 D1 Sync
+   - Header 顯示 D1 / R2 雲端狀態
+   - Manual / Auto Sync UI 改為「雲端同步」
+   - 保留 Local-first 啟動流程
+   - 不修改 Footprint / Expense / Trip / Backup 功能邏輯
+
    【V2.3.0 Cloud Authorization】
-   - 新增 Cloud Authorization UI 管理
-   - 新增 Token 輸入 / 驗證 / 更換 / 清除
+   - Cloud Authorization UI 管理
+   - Token 輸入 / 驗證 / 更換 / 清除
    - Header 區分 Local-only / Authorized
    - 未授權不視為 D1 連線錯誤
    - Manual Sync 未授權時維持 Local-only
    - Auto Sync 與 Cloud Authorization 分離
    - App 啟動時先顯示 Local，再檢查 Worker / Authorization
-   - 不修改 Footprint / Food / Expense / Trip 功能邏輯
 
    【V2.2.x】
    - Modular 總控
@@ -63,6 +72,8 @@ import {
   verifyCloudAuthorization,
 
   testCloudConnection,
+  testR2Connection,
+
   syncNow,
   getSyncStatusSnapshot
 
@@ -121,14 +132,22 @@ import {
    LOCAL CACHE
 ========================================================= */
 
-let trips = [];
-let footprints = [];
-let foodRecords = [];
-let expenses = [];
+let trips =
+  [];
+
+let footprints =
+  [];
+
+let foodRecords =
+  [];
+
+let expenses =
+  [];
 
 
 /* =========================================================
    CLOUD STATE
+   V2.4.0
 ========================================================= */
 
 let cloudState = {
@@ -143,6 +162,28 @@ let cloudState = {
     null,
 
   state:
+    "unknown",
+
+  /*
+    R2 readiness。
+
+    null：
+    尚未檢查
+
+    true：
+    R2 binding / bucket ready
+
+    false：
+    已檢查但不可用
+  */
+
+  r2:
+    null,
+
+  r2_checked:
+    false,
+
+  r2_state:
     "unknown"
 
 };
@@ -284,7 +325,7 @@ export function showMessage(
 
   if (
     type ===
-    "error"
+      "error"
   ) {
 
     console.error(
@@ -581,7 +622,7 @@ function renderTripSelects() {
         .some(
           option =>
             option.value ===
-            oldValue
+              oldValue
         )
       ) {
 
@@ -751,6 +792,115 @@ function updateNetworkStatus() {
 
 
 /* =========================================================
+   R2 STATE CHECK
+   V2.4.0
+========================================================= */
+
+async function refreshR2State() {
+
+  /*
+    未授權或 Offline 時不呼叫 R2 API。
+  */
+
+  if (
+    !navigator.onLine ||
+    !isCloudAuthorized()
+  ) {
+
+    cloudState = {
+
+      ...cloudState,
+
+      r2:
+        null,
+
+      r2_checked:
+        false,
+
+      r2_state:
+
+        navigator.onLine
+
+          ? "unauthorized"
+
+          : "offline"
+
+    };
+
+
+    return cloudState;
+
+  }
+
+
+  try {
+
+    const result =
+      await testR2Connection();
+
+
+    cloudState = {
+
+      ...cloudState,
+
+      r2:
+        result.r2 ===
+          true,
+
+      r2_checked:
+        true,
+
+      r2_state:
+        result.state ||
+        (
+          result.r2 ===
+            true
+
+            ? "ready"
+
+            : "error"
+        )
+
+    };
+
+
+    return cloudState;
+
+  }
+  catch (
+    error
+  ) {
+
+    console.warn(
+      "R2 readiness check failed:",
+      error
+    );
+
+
+    cloudState = {
+
+      ...cloudState,
+
+      r2:
+        false,
+
+      r2_checked:
+        true,
+
+      r2_state:
+        "error"
+
+    };
+
+
+    return cloudState;
+
+  }
+
+}
+
+
+/* =========================================================
    HEADER CLOUD
 ========================================================= */
 
@@ -828,12 +978,47 @@ function updateCloudStatus() {
     }
 
 
+    /*
+      V2.4.0
+
+      R2 已檢查而且失敗時，
+      D1 Authorization 仍然有效。
+
+      因此顯示 warning，
+      但不把整個 Cloud 視為未授權。
+    */
+
+    if (
+      cloudState.r2_checked &&
+      cloudState.r2 !==
+        true
+    ) {
+
+      status.className =
+        "status-pill warning";
+
+
+      status.textContent =
+        "🟠 D1 已授權・R2 異常";
+
+
+      return;
+
+    }
+
+
     status.className =
       "status-pill success";
 
 
     status.textContent =
-      "🔐 雲端已授權";
+
+      cloudState.r2 ===
+        true
+
+        ? "🔐 D1 + R2 已就緒"
+
+        : "🔐 雲端已授權";
 
 
     return;
@@ -1055,8 +1240,29 @@ function updateCloudAuthorizationUI() {
     isCloudAuthorized()
   ) {
 
+    if (
+      cloudState.r2_checked &&
+      cloudState.r2 !==
+        true
+    ) {
+
+      status.textContent =
+        "🔐 D1 已授權，但 R2 照片服務目前無法使用；一般資料同步仍可繼續。";
+
+
+      return;
+
+    }
+
+
     status.textContent =
-      "🔐 雲端已授權，可使用 D1 同步。";
+
+      cloudState.r2 ===
+        true
+
+        ? "🔐 雲端已授權，可使用 D1 同步與 R2 照片。"
+
+        : "🔐 雲端已授權，可使用 D1 同步。";
 
 
     return;
@@ -1122,7 +1328,6 @@ function updateCloudAuthorizationUI() {
   }
 
 }
-
 /* =========================================================
    AUTO SYNC DESCRIPTION
 ========================================================= */
@@ -1161,8 +1366,10 @@ function updateAutoSyncDescription() {
 
 
   /*
-    V2.3.0
+    V2.4.0
+
     Auto Sync 與 Cloud Authorization 分開顯示。
+    照片也遵循同一個 Local-first Sync 流程。
   */
 
   if (
@@ -1173,7 +1380,7 @@ function updateAutoSyncDescription() {
 
       getAutoSyncEnabled()
 
-        ? "Auto Sync 已開啟，但目前尚未授權雲端。資料只會先存 Local，輸入正確 Token 後才會同步到 D1。"
+        ? "Auto Sync 已開啟，但目前尚未授權雲端。資料與照片都會先保存在 Local，輸入正確 Token 後才會同步到 D1 / R2。"
 
         : "Auto Sync 已關閉。目前為 Local-only；GPS、地址、Nearby 等網路功能仍可正常使用。";
 
@@ -1193,7 +1400,27 @@ function updateAutoSyncDescription() {
 
         ? "Auto Sync 已開啟，但 Cloud Token 尚未驗證或驗證失敗。目前仍維持 Local-only。"
 
-        : "Auto Sync 已關閉。Cloud Token 已儲存，但未授權前不會同步 D1。";
+        : "Auto Sync 已關閉。Cloud Token 已儲存，但未授權前不會同步 D1 / R2。";
+
+
+    return;
+
+  }
+
+
+  if (
+    cloudState.r2_checked &&
+    cloudState.r2 !==
+      true
+  ) {
+
+    description.textContent =
+
+      getAutoSyncEnabled()
+
+        ? "Auto Sync 已開啟。D1 可同步，但目前 R2 照片服務異常；照片會保留 Local 並等待後續重試。"
+
+        : "Auto Sync 已關閉。D1 已授權，但目前 R2 照片服務異常；可稍後手動同步。";
 
 
     return;
@@ -1205,9 +1432,9 @@ function updateAutoSyncDescription() {
 
     getAutoSyncEnabled()
 
-      ? "開啟：新增、修改、刪除會先存 Local，再自動同步到 D1。"
+      ? "開啟：新增、修改、刪除會先存 Local，再自動同步到 D1；美食照片另外同步到 R2。"
 
-      : "關閉：資料只先存 Local。需要時可按「立即同步 D1」。";
+      : "關閉：資料只先存 Local。需要時可按「立即同步雲端」。";
 
 }
 
@@ -1321,7 +1548,7 @@ export async function updateSyncStatusUI() {
 
       if (
         counts.pending >
-        0
+          0
       ) {
 
         header.textContent =
@@ -1339,7 +1566,7 @@ export async function updateSyncStatusUI() {
     else if (
       snapshot.running ||
       counts.syncing >
-      0
+        0
     ) {
 
       header.className =
@@ -1347,12 +1574,12 @@ export async function updateSyncStatusUI() {
 
 
       header.textContent =
-        "🔄 同步中...";
+        "🔄 雲端同步中...";
 
     }
     else if (
       counts.error >
-      0
+        0
     ) {
 
       header.className =
@@ -1365,7 +1592,7 @@ export async function updateSyncStatusUI() {
     }
     else if (
       counts.pending >
-      0
+        0
     ) {
 
       header.className =
@@ -1471,6 +1698,7 @@ export async function updateSyncStatusUI() {
 
 /* =========================================================
    SYNC HOOKS
+   V2.4.0
 ========================================================= */
 
 function setupSyncHooks() {
@@ -1495,7 +1723,7 @@ function setupSyncHooks() {
 
           if (
             event.type ===
-            "sync-start"
+              "sync-start"
           ) {
 
             lastSyncMessage =
@@ -1509,7 +1737,7 @@ function setupSyncHooks() {
 
           if (
             event.type ===
-            "record-syncing"
+              "record-syncing"
           ) {
 
             await updateSyncStatusUI();
@@ -1519,7 +1747,7 @@ function setupSyncHooks() {
 
           if (
             event.type ===
-            "sync-success"
+              "sync-success"
           ) {
 
             lastSyncMessage =
@@ -1529,6 +1757,26 @@ function setupSyncHooks() {
                 ? "✅ 手動同步完成"
 
                 : "✅ 同步完成";
+
+
+            /*
+              Sync 成功後重新檢查 R2 readiness。
+
+              一般資料 sync 成功不代表 R2 一定正常，
+              所以兩者狀態分開管理。
+            */
+
+            if (
+              navigator.onLine &&
+              isCloudAuthorized()
+            ) {
+
+              await refreshR2State();
+
+            }
+
+
+            updateCloudStatus();
 
 
             await renderAll();
@@ -1557,8 +1805,28 @@ function setupSyncHooks() {
       onCloudState:
         state => {
 
-          cloudState =
-            state;
+          /*
+            V2.4.0
+
+            api-sync.js 的 Authorization event
+            不知道 main.js 已經檢查過的 R2 state。
+
+            因此使用 merge，
+            不能直接：
+
+            cloudState = state
+
+            否則 r2 / r2_checked / r2_state
+            會被清掉。
+          */
+
+          cloudState = {
+
+            ...cloudState,
+
+            ...state
+
+          };
 
 
           updateCloudStatus();
@@ -1657,9 +1925,9 @@ async function handleAutoSyncToggle(
 
     enabled
 
-      ? "☁️ D1 自動同步已開啟"
+      ? "☁️ 雲端自動同步已開啟"
 
-      : "📱 已關閉 D1 自動同步"
+      : "📱 已關閉雲端自動同步"
 
   );
 
@@ -1784,8 +2052,54 @@ async function handleCloudAuthVerify() {
       await verifyCloudAuthorization();
 
 
-    cloudState =
-      auth;
+    /*
+      保留既有 R2 state 欄位，
+      只更新 Authorization response。
+    */
+
+    cloudState = {
+
+      ...cloudState,
+
+      ...auth
+
+    };
+
+
+    if (
+      auth.authorized
+    ) {
+
+      /*
+        V2.4.0
+
+        Token 驗證成功後立即檢查 R2。
+
+        注意：
+        R2 失敗不會把 authorized 改回 false。
+      */
+
+      await refreshR2State();
+
+    }
+    else {
+
+      cloudState = {
+
+        ...cloudState,
+
+        r2:
+          null,
+
+        r2_checked:
+          false,
+
+        r2_state:
+          "unauthorized"
+
+      };
+
+    }
 
 
     updateCloudStatus();
@@ -1811,14 +2125,40 @@ async function handleCloudAuthVerify() {
       }
 
 
-      showToast(
-        "🔐 雲端授權成功"
-      );
+      if (
+        cloudState.r2 ===
+          true
+      ) {
+
+        showToast(
+          "🔐 雲端授權成功・D1 + R2 已就緒"
+        );
+
+      }
+      else if (
+        cloudState.r2_checked
+      ) {
+
+        showToast(
+          "🔐 D1 授權成功，但 R2 目前異常"
+        );
+
+      }
+      else {
+
+        showToast(
+          "🔐 雲端授權成功"
+        );
+
+      }
 
 
       /*
         若已有 pending，而且 Auto Sync ON，
         授權成功後直接補同步。
+
+        pending Food photo 也會在這次
+        syncNow() 中進入 R2 workflow。
       */
 
       const counts =
@@ -1828,7 +2168,7 @@ async function handleCloudAuthVerify() {
       if (
         getAutoSyncEnabled() &&
         counts.pending >
-        0
+          0
       ) {
 
         setTimeout(
@@ -1850,7 +2190,7 @@ async function handleCloudAuthVerify() {
 
     if (
       auth.state ===
-      "auth-not-configured"
+        "auth-not-configured"
     ) {
 
       showMessage(
@@ -1866,7 +2206,7 @@ async function handleCloudAuthVerify() {
 
     if (
       auth.state ===
-      "version-mismatch"
+        "version-mismatch"
     ) {
 
       showMessage(
@@ -1909,8 +2249,6 @@ async function handleCloudAuthVerify() {
   }
 
 }
-
-
 /* =========================================================
    CLEAR CLOUD AUTHORIZATION
 ========================================================= */
@@ -1936,7 +2274,7 @@ async function handleCloudAuthClear() {
 
       "清除雲端授權",
 
-      "確定要清除此裝置儲存的 Cloud Token？\n\nLocal 資料不會刪除，之後仍可重新輸入 Token 再同步。"
+      "確定要清除此裝置儲存的 Cloud Token？\n\nLocal 資料與本機照片不會刪除，之後仍可重新輸入 Token 再同步。"
 
     );
 
@@ -1965,7 +2303,16 @@ async function handleCloudAuthClear() {
       null,
 
     state:
-      "local-only"
+      "local-only",
+
+    r2:
+      null,
+
+    r2_checked:
+      false,
+
+    r2_state:
+      "unauthorized"
 
   };
 
@@ -2044,21 +2391,40 @@ async function handleManualSync() {
       lastSyncMessage =
         "✅ 手動同步完成";
 
+
+      /*
+        V2.4.0
+
+        sync 完成後重新確認 R2。
+      */
+
+      if (
+        navigator.onLine &&
+        isCloudAuthorized()
+      ) {
+
+        await refreshR2State();
+
+      }
+
+
+      updateCloudStatus();
+
     }
     else if (
       result.skipped ===
-      "offline"
+        "offline"
     ) {
 
       showMessage(
-        "目前沒有網路，Local 資料仍安全保留。",
+        "目前沒有網路，Local 資料與照片仍安全保留。",
         "info"
       );
 
     }
     else if (
       result.skipped ===
-      "already-running"
+        "already-running"
     ) {
 
       showToast(
@@ -2098,13 +2464,15 @@ async function handleManualSync() {
 
 
       button.textContent =
-        "🔄 立即同步 D1";
+        "🔄 立即同步雲端";
 
     }
 
   }
 
 }
+
+
 /* =========================================================
    TABS
 ========================================================= */
@@ -2158,7 +2526,7 @@ function activateTab(
 
   if (
     tabName ===
-    "footprint"
+      "footprint"
   ) {
 
     setTimeout(
@@ -2250,9 +2618,9 @@ function bindConfirmEvents() {
 
       if (
         event.target ===
-        el(
-          "confirmModal"
-        )
+          el(
+            "confirmModal"
+          )
       ) {
 
         closeConfirm(
@@ -2292,7 +2660,6 @@ function bindGeneralEvents() {
 
 
   /*
-    V2.3.0
     Cloud Authorization Events
   */
 
@@ -2323,7 +2690,7 @@ function bindGeneralEvents() {
 
       if (
         event.key !==
-        "Enter"
+          "Enter"
       ) {
 
         return;
@@ -2340,6 +2707,10 @@ function bindGeneralEvents() {
   );
 
 
+  /* =====================================================
+     ONLINE
+  ===================================================== */
+
   window.addEventListener(
     "online",
     async () => {
@@ -2350,8 +2721,19 @@ function bindGeneralEvents() {
       /*
         api-sync.js 自己也會處理 online event。
 
-        main.js 這裡只更新 UI。
+        main.js 這裡：
+        1. 更新 UI
+        2. 如果目前已授權，再重新檢查 R2
       */
+
+      if (
+        isCloudAuthorized()
+      ) {
+
+        await refreshR2State();
+
+      }
+
 
       updateCloudStatus();
 
@@ -2364,6 +2746,10 @@ function bindGeneralEvents() {
     }
   );
 
+
+  /* =====================================================
+     OFFLINE
+  ===================================================== */
 
   window.addEventListener(
     "offline",
@@ -2372,6 +2758,22 @@ function bindGeneralEvents() {
       updateNetworkStatus();
 
 
+      cloudState = {
+
+        ...cloudState,
+
+        r2:
+          null,
+
+        r2_checked:
+          false,
+
+        r2_state:
+          "offline"
+
+      };
+
+
       updateCloudStatus();
 
 
@@ -2384,13 +2786,17 @@ function bindGeneralEvents() {
   );
 
 
+  /* =====================================================
+     VISIBILITY CHANGE
+  ===================================================== */
+
   document.addEventListener(
     "visibilitychange",
     async () => {
 
       if (
         document.visibilityState !==
-        "visible"
+          "visible"
       ) {
 
         return;
@@ -2401,7 +2807,7 @@ function bindGeneralEvents() {
       /*
         回到頁面時：
 
-        - 必須 Online
+        - Online
         - Auto Sync ON
         - Cloud 已授權
 
@@ -2416,12 +2822,35 @@ function bindGeneralEvents() {
 
         await syncNow();
 
+
+        /*
+          同步後刷新 R2 readiness。
+        */
+
+        await refreshR2State();
+
+
+        updateCloudStatus();
+
       }
       else {
 
         /*
           沒有同步也更新一次 Header。
+
+          如果 Online + 已授權，
+          仍可重新確認 R2。
         */
+
+        if (
+          navigator.onLine &&
+          isCloudAuthorized()
+        ) {
+
+          await refreshR2State();
+
+        }
+
 
         updateNetworkStatus();
 
@@ -2440,7 +2869,6 @@ function bindGeneralEvents() {
   );
 
 }
-
 
 /* =========================================================
    MODULE INITIALIZATION
@@ -2704,7 +3132,7 @@ async function init() {
     /*
       Worker Root 是公開的。
 
-      testCloudConnection() 會：
+      testCloudConnection()：
 
       1. 檢查 Worker
       2. 檢查版本
@@ -2716,8 +3144,61 @@ async function init() {
       await testCloudConnection();
 
 
-    cloudState =
-      cloud;
+    /*
+      V2.4.0
+
+      使用 merge，
+      保留 R2 state 欄位。
+    */
+
+    cloudState = {
+
+      ...cloudState,
+
+      ...cloud
+
+    };
+
+
+    /*
+      Authorization 成功後，
+      再獨立檢查 R2。
+
+      R2 failure 不會讓 D1 Authorization 失效。
+    */
+
+    if (
+      navigator.onLine &&
+      cloud.authorized ===
+        true
+    ) {
+
+      await refreshR2State();
+
+    }
+    else {
+
+      cloudState = {
+
+        ...cloudState,
+
+        r2:
+          null,
+
+        r2_checked:
+          false,
+
+        r2_state:
+
+          navigator.onLine
+
+            ? "unauthorized"
+
+            : "offline"
+
+      };
+
+    }
 
 
     updateCloudStatus();
@@ -2730,13 +3211,22 @@ async function init() {
 
 
     /*
-      V2.3.0
+      V2.4.0
 
       首次 Auto Sync 必須同時滿足：
 
       - Online
       - Cloud Authorized
       - Auto Sync ON
+
+      不要求 R2 Ready。
+
+      原因：
+      R2 異常不能阻止 Trip / Footprint /
+      Expense / Food metadata 的 D1 同步。
+
+      若 Food photo 需要 R2，
+      api-sync.js 會自行保留 pending / retry。
     */
 
     if (
@@ -2747,6 +3237,26 @@ async function init() {
     ) {
 
       await syncNow();
+
+
+      /*
+        Auto Sync 完成後，
+        再刷新一次 R2 state。
+      */
+
+      if (
+        isCloudAuthorized()
+      ) {
+
+        await refreshR2State();
+
+
+        updateCloudStatus();
+
+
+        updateCloudAuthorizationUI();
+
+      }
 
     }
 
