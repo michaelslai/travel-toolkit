@@ -1,7 +1,22 @@
 /* =========================================================
-   Travel Toolkit V2.3.0 Modular
+   Travel Toolkit V2.4.0 Modular
    File: js/api-sync.js
    Modified: 2026-09-13
+
+   【V2.4.0 R2 Photo Sync】
+   - 新增 Cloudflare R2 Photo Upload / Read / Delete helper
+   - Food photo_local 仍只保留於 IndexedDB
+   - photo_key 同步至 D1，作為 R2 object identifier
+   - 新增 photo_local_key，辨識本機快取對應的 photo_key
+   - 新增 photo_pending_action：upload / delete
+   - 新增 photo_old_key：照片替換／移除後延後清除舊 R2 object
+   - R2 Upload 成功後才更新 photo_key
+   - D1 metadata 同步成功後才刪除舊 R2 object
+   - Pull 時只有 photo_local_key 與 Server photo_key 一致才保留快取
+   - 避免其他裝置更新照片後被舊 photo_local 蓋回
+   - prepareSyncData 不送任何 Local-only photo state 到 Worker / D1
+   - 保留 V2.3.0 Cloud Authorization / Local-first / LWW
+   - IndexedDB schema 不變
 
    【V2.3.0 Cloud Authorization】
    - 新增 Cloud Token LocalStorage 管理
@@ -24,7 +39,6 @@
    - Push reconcile 同 UID 保留 photo_local
    - Canonical UID reconcile 保留 photo_local
    - Pull merge 保留 photo_local
-   - 保留 PHOTO debug log
 
    【V2.2.x】
    - 從 V2.1.2 抽離 D1 / Worker 同步核心
@@ -39,6 +53,12 @@ import {
   CLOUD_TOKEN_STORAGE_KEY,
   CLOUD_AUTH_HEADER,
   CLOUD_AUTH_CHECK_PATH,
+
+  CLOUD_R2_STATUS_PATH,
+  CLOUD_PHOTO_UPLOAD_PATH,
+  CLOUD_PHOTO_PATH_PREFIX,
+  CLOUD_PHOTO_CONTENT_TYPE,
+  CLOUD_PHOTO_MAX_BYTES,
 
   STORE_TRIPS,
   STORE_FOOTPRINTS,
@@ -341,11 +361,6 @@ export function setCloudToken(
   }
 
 
-  /*
-    Token 剛被新增／替換，
-    必須重新驗證。
-  */
-
   cloudAuthState =
     "unknown";
 
@@ -493,20 +508,6 @@ function isCloudAuthError(
    API HELPER
 ========================================================= */
 
-/*
-  V2.3.0
-
-  /api/*：
-  - 必須有 Cloud Token
-  - 自動加入 X-Travel-Token
-
-  非 /api/*：
-  - 視為 public endpoint
-  - 不強制 Token
-
-  目前正式同步都走 /api/*。
-*/
-
 export async function api(
   path,
   options = {}
@@ -542,13 +543,6 @@ export async function api(
     const token =
       getCloudToken();
 
-
-    /*
-      沒 Token：
-      直接在 Browser 擋掉。
-
-      不送任何 request 到 Worker。
-    */
 
     if (
       !token
@@ -625,16 +619,6 @@ export async function api(
       data;
 
 
-    /*
-      Worker 明確表示授權失敗。
-
-      不刪掉 Token，
-      讓使用者可以在 UI 看出 Token 有問題，
-      並選擇重新輸入。
-
-      但 Runtime 立即降回 Local-only。
-    */
-
     if (
       response.status ===
         401 ||
@@ -670,10 +654,6 @@ export async function api(
 
     }
 
-
-    /*
-      Worker 有跑，但 Secret 尚未設定。
-    */
 
     if (
       data.code ===
@@ -713,6 +693,829 @@ export async function api(
     throw error;
 
   }
+
+
+  return data;
+
+}
+/* =========================================================
+   R2 PHOTO HELPERS
+   V2.4.0
+========================================================= */
+
+function dataUrlToBlob(
+  dataUrl
+) {
+
+  const value =
+    String(
+      dataUrl ||
+      ""
+    );
+
+
+  const match =
+    value.match(
+      /^data:([^;,]+)(?:;charset=[^;,]+)?;base64,(.+)$/i
+    );
+
+
+  if (
+    !match
+  ) {
+
+    throw new Error(
+      "Invalid photo data URL"
+    );
+
+  }
+
+
+  const contentType =
+    String(
+      match[1] ||
+      ""
+    )
+    .toLowerCase();
+
+
+  const binary =
+    atob(
+      match[2]
+    );
+
+
+  const bytes =
+    new Uint8Array(
+      binary.length
+    );
+
+
+  for (
+    let i = 0;
+    i < binary.length;
+    i++
+  ) {
+
+    bytes[i] =
+      binary.charCodeAt(
+        i
+      );
+
+  }
+
+
+  return new Blob(
+    [
+      bytes
+    ],
+    {
+      type:
+        contentType
+    }
+  );
+
+}
+
+
+function validatePhotoBlob(
+  blob
+) {
+
+  if (
+    !blob
+  ) {
+
+    throw new Error(
+      "Photo blob is missing"
+    );
+
+  }
+
+
+  if (
+    blob.type !==
+    CLOUD_PHOTO_CONTENT_TYPE
+  ) {
+
+    throw new Error(
+      "照片必須是 JPEG 格式"
+    );
+
+  }
+
+
+  if (
+    blob.size >
+    CLOUD_PHOTO_MAX_BYTES
+  ) {
+
+    throw new Error(
+      "照片超過 5 MB，無法上傳"
+    );
+
+  }
+
+
+  if (
+    blob.size <=
+    0
+  ) {
+
+    throw new Error(
+      "照片資料為空"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   TEST R2 CONNECTION
+========================================================= */
+
+export async function testR2Connection() {
+
+  if (
+    !navigator.onLine
+  ) {
+
+    return {
+
+      ok:
+        false,
+
+      state:
+        "offline",
+
+      r2:
+        false
+
+    };
+
+  }
+
+
+  if (
+    !isCloudAuthorized()
+  ) {
+
+    return {
+
+      ok:
+        false,
+
+      state:
+        "unauthorized",
+
+      r2:
+        false
+
+    };
+
+  }
+
+
+  try {
+
+    const result =
+      await api(
+        CLOUD_R2_STATUS_PATH
+      );
+
+
+    return {
+
+      ok:
+        result.ok ===
+          true,
+
+      state:
+        result.r2 ===
+          true
+          ? "ready"
+          : "error",
+
+      r2:
+        result.r2 ===
+          true,
+
+      data:
+        result
+
+    };
+
+  }
+  catch (
+    error
+  ) {
+
+    return {
+
+      ok:
+        false,
+
+      state:
+        isCloudAuthError(
+          error
+        )
+          ? "unauthorized"
+          : "error",
+
+      r2:
+        false,
+
+      error
+
+    };
+
+  }
+
+}
+
+
+/* =========================================================
+   UPLOAD CLOUD PHOTO
+========================================================= */
+
+/*
+  input:
+  - foodClientUid
+  - Blob
+  或
+  - Data URL
+
+  output:
+  {
+    ok,
+    photo_key,
+    size_bytes,
+    content_type
+  }
+*/
+
+export async function uploadCloudPhoto(
+  foodClientUid,
+  photo
+) {
+
+  if (
+    !navigator.onLine
+  ) {
+
+    throw new Error(
+      "目前離線，無法上傳照片"
+    );
+
+  }
+
+
+  if (
+    !isCloudAuthorized()
+  ) {
+
+    throw createCloudAuthError(
+      "尚未授權雲端照片功能",
+      "PHOTO_CLOUD_UNAUTHORIZED",
+      401
+    );
+
+  }
+
+
+  const uid =
+    String(
+      foodClientUid ||
+      ""
+    )
+    .trim();
+
+
+  if (
+    !uid
+  ) {
+
+    throw new Error(
+      "food client_uid is required"
+    );
+
+  }
+
+
+  let blob =
+    photo;
+
+
+  if (
+    typeof photo ===
+      "string"
+  ) {
+
+    blob =
+      dataUrlToBlob(
+        photo
+      );
+
+  }
+
+
+  validatePhotoBlob(
+    blob
+  );
+
+
+  const path =
+
+    CLOUD_PHOTO_UPLOAD_PATH +
+
+    "?food_client_uid=" +
+
+    encodeURIComponent(
+      uid
+    );
+
+
+  syncDebug(
+    "PHOTO UPLOAD START",
+    {
+
+      client_uid:
+        uid,
+
+      size_bytes:
+        blob.size,
+
+      content_type:
+        blob.type
+
+    }
+  );
+
+
+  const token =
+    getCloudToken();
+
+
+  const response =
+    await fetch(
+      API_BASE +
+      path,
+      {
+
+        method:
+          "POST",
+
+        headers: {
+
+          [
+            CLOUD_AUTH_HEADER
+          ]:
+            token,
+
+          "Content-Type":
+            CLOUD_PHOTO_CONTENT_TYPE
+
+        },
+
+        body:
+          blob
+
+      }
+    );
+
+
+  let data =
+    {};
+
+
+  try {
+
+    data =
+      await response.json();
+
+  }
+  catch {
+
+    data =
+      {};
+
+  }
+
+
+  if (
+    !response.ok
+  ) {
+
+    const error =
+      new Error(
+        data.error ||
+        `Photo upload failed: HTTP ${response.status}`
+      );
+
+
+    error.status =
+      response.status;
+
+
+    error.data =
+      data;
+
+
+    if (
+      response.status ===
+        401 ||
+      data.code ===
+        "UNAUTHORIZED"
+    ) {
+
+      cloudAuthState =
+        "unauthorized";
+
+
+      error.cloudAuthError =
+        true;
+
+    }
+
+
+    throw error;
+
+  }
+
+
+  if (
+    !data.photo_key
+  ) {
+
+    throw new Error(
+      "Worker did not return photo_key"
+    );
+
+  }
+
+
+  syncDebug(
+    "PHOTO UPLOAD SUCCESS",
+    {
+
+      client_uid:
+        uid,
+
+      photo_key:
+        data.photo_key,
+
+      size_bytes:
+        data.size_bytes ??
+        blob.size
+
+    }
+  );
+
+
+  return data;
+
+}
+
+
+/* =========================================================
+   FETCH CLOUD PHOTO
+========================================================= */
+
+/*
+  不能直接：
+
+  <img src="/api/photos/...">
+
+  因為 img 無法自訂 X-Travel-Token。
+
+  必須：
+  fetch + auth header
+  → Blob
+  → URL.createObjectURL()
+*/
+
+export async function fetchCloudPhoto(
+  photoKey
+) {
+
+  if (
+    !navigator.onLine
+  ) {
+
+    throw new Error(
+      "目前離線，無法下載雲端照片"
+    );
+
+  }
+
+
+  if (
+    !isCloudAuthorized()
+  ) {
+
+    throw createCloudAuthError(
+      "尚未授權雲端照片功能",
+      "PHOTO_CLOUD_UNAUTHORIZED",
+      401
+    );
+
+  }
+
+
+  const key =
+    String(
+      photoKey ||
+      ""
+    )
+    .trim();
+
+
+  if (
+    !key
+  ) {
+
+    throw new Error(
+      "photo_key is required"
+    );
+
+  }
+
+
+  const token =
+    getCloudToken();
+
+
+  const response =
+    await fetch(
+
+      API_BASE +
+
+      CLOUD_PHOTO_PATH_PREFIX +
+
+      encodeURIComponent(
+        key
+      ),
+
+      {
+
+        method:
+          "GET",
+
+        headers: {
+
+          [
+            CLOUD_AUTH_HEADER
+          ]:
+            token
+
+        }
+
+      }
+    );
+
+
+  if (
+    !response.ok
+  ) {
+
+    let data =
+      {};
+
+
+    try {
+
+      data =
+        await response.json();
+
+    }
+    catch {
+
+      data =
+        {};
+
+    }
+
+
+    const error =
+      new Error(
+        data.error ||
+        `Photo fetch failed: HTTP ${response.status}`
+      );
+
+
+    error.status =
+      response.status;
+
+
+    error.data =
+      data;
+
+
+    if (
+      response.status ===
+        401 ||
+      data.code ===
+        "UNAUTHORIZED"
+    ) {
+
+      cloudAuthState =
+        "unauthorized";
+
+
+      error.cloudAuthError =
+        true;
+
+    }
+
+
+    throw error;
+
+  }
+
+
+  const blob =
+    await response.blob();
+
+
+  if (
+    blob.type !==
+      CLOUD_PHOTO_CONTENT_TYPE
+  ) {
+
+    console.warn(
+      "Unexpected cloud photo content type:",
+      blob.type
+    );
+
+  }
+
+
+  return blob;
+
+}
+
+
+/* =========================================================
+   DELETE CLOUD PHOTO
+========================================================= */
+
+export async function deleteCloudPhoto(
+  photoKey
+) {
+
+  if (
+    !photoKey
+  ) {
+
+    return {
+
+      ok:
+        true,
+
+      skipped:
+        "no-photo-key"
+
+    };
+
+  }
+
+
+  if (
+    !navigator.onLine
+  ) {
+
+    throw new Error(
+      "目前離線，無法刪除雲端照片"
+    );
+
+  }
+
+
+  if (
+    !isCloudAuthorized()
+  ) {
+
+    throw createCloudAuthError(
+      "尚未授權雲端照片功能",
+      "PHOTO_CLOUD_UNAUTHORIZED",
+      401
+    );
+
+  }
+
+
+  const key =
+    String(
+      photoKey
+    )
+    .trim();
+
+
+  const token =
+    getCloudToken();
+
+
+  const response =
+    await fetch(
+
+      API_BASE +
+
+      CLOUD_PHOTO_PATH_PREFIX +
+
+      encodeURIComponent(
+        key
+      ),
+
+      {
+
+        method:
+          "DELETE",
+
+        headers: {
+
+          [
+            CLOUD_AUTH_HEADER
+          ]:
+            token
+
+        }
+
+      }
+    );
+
+
+  let data =
+    {};
+
+
+  try {
+
+    data =
+      await response.json();
+
+  }
+  catch {
+
+    data =
+      {};
+
+  }
+
+
+  if (
+    !response.ok
+  ) {
+
+    const error =
+      new Error(
+        data.error ||
+        `Photo delete failed: HTTP ${response.status}`
+      );
+
+
+    error.status =
+      response.status;
+
+
+    error.data =
+      data;
+
+
+    if (
+      response.status ===
+        401 ||
+      data.code ===
+        "UNAUTHORIZED"
+    ) {
+
+      cloudAuthState =
+        "unauthorized";
+
+
+      error.cloudAuthError =
+        true;
+
+    }
+
+
+    throw error;
+
+  }
+
+
+  syncDebug(
+    "PHOTO DELETE SUCCESS",
+    {
+
+      photo_key:
+        key,
+
+      result:
+        data
+
+    }
+  );
 
 
   return data;
@@ -952,6 +1755,7 @@ export async function verifyCloudAuthorization() {
 
 }
 
+
 /* =========================================================
    AUTO SYNC SETTING
 ========================================================= */
@@ -993,16 +1797,6 @@ export async function setAutoSyncEnabled(
   );
 
 
-  /*
-    V2.3.0
-
-    Auto Sync 開啟時，
-    只有已授權 Cloud 才允許背景同步。
-
-    未授權仍維持 Local-first，
-    不把它視為錯誤。
-  */
-
   if (
     autoSyncEnabled &&
     navigator.onLine &&
@@ -1022,6 +1816,326 @@ export async function setAutoSyncEnabled(
 
 
   return autoSyncEnabled;
+
+}
+/* =========================================================
+   FOOD PHOTO LOCAL STATE
+   V2.4.0
+========================================================= */
+
+/*
+  Local-only fields：
+
+  photo_local
+  → 本機 Base64 JPEG
+
+  photo_local_key
+  → photo_local 對應哪一個 R2 photo_key
+
+  photo_pending_action
+  → "upload"
+  → "delete"
+  → null
+
+  photo_old_key
+  → 更換／移除照片時，
+    等 D1 metadata 成功後才刪除的舊 R2 key
+*/
+
+
+function normalizePhotoKey(
+  value
+) {
+
+  const key =
+    String(
+      value ||
+      ""
+    )
+    .trim();
+
+
+  return key ||
+    null;
+
+}
+
+
+function normalizePhotoPendingAction(
+  value
+) {
+
+  if (
+    value ===
+      "upload" ||
+    value ===
+      "delete"
+  ) {
+
+    return value;
+
+  }
+
+
+  return null;
+
+}
+
+
+/* =========================================================
+   PHOTO CACHE MATCH
+========================================================= */
+
+/*
+  判斷既有 photo_local
+  是否仍然可以當作目前 Server photo_key 的快取。
+
+  情況 1：
+  photo_local_key === server photo_key
+  → 明確相同，保留
+
+  情況 2：
+  舊 V2.3.0 資料
+  photo_local 有值
+  photo_local_key 尚不存在
+  Server 也尚未有 photo_key
+  → 保留 legacy local photo
+
+  其他：
+  → 視為 stale cache
+*/
+
+function canPreservePhotoLocal(
+  existing,
+  serverPhotoKey
+) {
+
+  if (
+    !existing?.photo_local
+  ) {
+
+    return false;
+
+  }
+
+
+  const localCacheKey =
+    normalizePhotoKey(
+      existing.photo_local_key
+    );
+
+
+  const serverKey =
+    normalizePhotoKey(
+      serverPhotoKey
+    );
+
+
+  if (
+    localCacheKey &&
+    serverKey &&
+    localCacheKey ===
+      serverKey
+  ) {
+
+    return true;
+
+  }
+
+
+  /*
+    V2.3.0 → V2.4.0 相容：
+
+    舊資料可能有 photo_local，
+    但尚未有 photo_local_key / photo_key。
+  */
+
+  if (
+    !localCacheKey &&
+    !serverKey
+  ) {
+
+    return true;
+
+  }
+
+
+  return false;
+
+}
+
+
+/* =========================================================
+   PHOTO STATE AFTER OWN PUSH
+========================================================= */
+
+/*
+  這個 helper 用在：
+
+  Local Push
+  → Worker / D1
+  → Server 回傳 canonical record
+
+  此時 Server record 是剛剛由本機送出的結果，
+  所以 Local-only workflow state 仍需暫時保留，
+  等 syncUpsertItem() 做 R2 cleanup。
+*/
+
+function preservePhotoStateAfterPush(
+  existing,
+  converted,
+  serverRecord
+) {
+
+  if (
+    !existing
+  ) {
+
+    return converted;
+
+  }
+
+
+  const serverPhotoKey =
+    normalizePhotoKey(
+      serverRecord?.photo_key
+    );
+
+
+  if (
+    canPreservePhotoLocal(
+      existing,
+      serverPhotoKey
+    )
+  ) {
+
+    converted.photo_local =
+      existing.photo_local;
+
+
+    converted.photo_local_key =
+      normalizePhotoKey(
+        existing.photo_local_key
+      );
+
+  }
+  else {
+
+    /*
+      若 Server 已改成其他 photo_key，
+      舊 photo_local 不可繼續冒充新照片。
+    */
+
+    converted.photo_local =
+      null;
+
+
+    converted.photo_local_key =
+      null;
+
+  }
+
+
+  /*
+    R2 workflow state 必須保留到
+    D1 metadata 成功後的 cleanup 階段。
+  */
+
+  converted.photo_pending_action =
+    normalizePhotoPendingAction(
+      existing.photo_pending_action
+    );
+
+
+  converted.photo_old_key =
+    normalizePhotoKey(
+      existing.photo_old_key
+    );
+
+
+  return converted;
+
+}
+
+
+/* =========================================================
+   PHOTO STATE FROM SERVER PULL
+========================================================= */
+
+/*
+  Pull 接受 Server version 時：
+
+  Server 的 photo_key 是 authoritative。
+
+  若本機 cache 對應同一個 key：
+  → 保留 photo_local
+
+  若 key 不同：
+  → 清掉 stale photo_local
+  → 後續 food.js 會依 photo_key 從 R2 抓新照片
+
+  因為這裡代表 Server 已贏得 LWW，
+  所以 local pending photo action 也要清掉。
+*/
+
+function applyServerPhotoState(
+  existing,
+  converted,
+  serverRecord
+) {
+
+  const serverPhotoKey =
+    normalizePhotoKey(
+      serverRecord?.photo_key
+    );
+
+
+  if (
+    canPreservePhotoLocal(
+      existing,
+      serverPhotoKey
+    )
+  ) {
+
+    converted.photo_local =
+      existing.photo_local;
+
+
+    /*
+      Legacy V2.3.0：
+
+      尚無 server photo_key 時，
+      photo_local_key 保持 null。
+    */
+
+    converted.photo_local_key =
+      serverPhotoKey ||
+      normalizePhotoKey(
+        existing?.photo_local_key
+      );
+
+  }
+  else {
+
+    converted.photo_local =
+      null;
+
+
+    converted.photo_local_key =
+      null;
+
+  }
+
+
+  converted.photo_pending_action =
+    null;
+
+
+  converted.photo_old_key =
+    null;
+
+
+  return converted;
 
 }
 
@@ -1052,6 +2166,43 @@ async function serverRecordToLocal(
 
 
   delete local.id;
+
+
+  /*
+    photo_local 等 Local-only 欄位
+    不會存在 Worker response。
+
+    這裡先建立乾淨狀態，
+    後續由 reconcile / merge 決定是否保留。
+  */
+
+  if (
+    entity ===
+      "food_records"
+  ) {
+
+    local.photo_key =
+      normalizePhotoKey(
+        serverRecord.photo_key
+      );
+
+
+    local.photo_local =
+      null;
+
+
+    local.photo_local_key =
+      null;
+
+
+    local.photo_pending_action =
+      null;
+
+
+    local.photo_old_key =
+      null;
+
+  }
 
 
   if (
@@ -1149,27 +2300,6 @@ async function reconcileCanonicalUid(
       );
 
 
-    syncDebug(
-      "PHOTO RECONCILE BEFORE",
-      {
-        entity,
-
-        originalUid,
-
-        canonicalUid,
-
-        has_photo_local:
-          Boolean(
-            existing?.photo_local
-          ),
-
-        photo_local_length:
-          existing?.photo_local?.length ||
-          0
-      }
-    );
-
-
     const local =
       await serverRecordToLocal(
         entity,
@@ -1177,25 +2307,57 @@ async function reconcileCanonicalUid(
       );
 
 
-    /*
-      V2.2.3 / V2.3.0
-
-      photo_local 是 Local-only 欄位。
-
-      Worker / D1 不保存照片 Base64，
-      所以 Server record 不可覆蓋本機照片。
-    */
-
     if (
       entity ===
-        "food_records" &&
-      existing?.photo_local
+        "food_records"
     ) {
 
-      local.photo_local =
-        existing.photo_local;
+      preservePhotoStateAfterPush(
+        existing,
+        local,
+        serverRecord
+      );
 
     }
+
+
+    syncDebug(
+      "PHOTO RECONCILE",
+      {
+
+        entity,
+
+        originalUid,
+
+        canonicalUid,
+
+        server_photo_key:
+          serverRecord.photo_key ??
+          null,
+
+        local_photo_key:
+          existing?.photo_key ??
+          null,
+
+        photo_local_key:
+          existing?.photo_local_key ??
+          null,
+
+        has_photo_local:
+          Boolean(
+            existing?.photo_local
+          ),
+
+        pending_action:
+          existing?.photo_pending_action ??
+          null,
+
+        old_key:
+          existing?.photo_old_key ??
+          null
+
+      }
+    );
 
 
     await dbPut(
@@ -1209,30 +2371,6 @@ async function reconcileCanonicalUid(
         sync_status:
           "synced"
 
-      }
-    );
-
-
-    const photoCheckAfterReconcile =
-      await dbGet(
-        storeName,
-        canonicalUid
-      );
-
-
-    syncDebug(
-      "PHOTO RECONCILE AFTER",
-      {
-        entity,
-
-        has_photo_local:
-          Boolean(
-            photoCheckAfterReconcile?.photo_local
-          ),
-
-        photo_local_length:
-          photoCheckAfterReconcile?.photo_local?.length ||
-          0
       }
     );
 
@@ -1274,27 +2412,34 @@ async function reconcileCanonicalUid(
 
 
   /*
-    V2.2.3 / V2.3.0
+    canonical UID 改變時：
 
-    canonical UID 改變時，
-    優先保留原本 temporary record 的 photo_local。
+    temporary 是這次真正 Push 的來源，
+    優先保留 temporary 的 Local-only state。
 
-    若 temporary 沒有，
-    再保留已存在 canonical record 的 photo_local。
+    temporary 不存在時，
+    才使用 canonicalExisting。
   */
 
-  const preservedPhotoLocal =
+  const localPhotoSource =
 
+    temporary ||
+    canonicalExisting ||
+    null;
+
+
+  if (
     entity ===
-      "food_records"
+    "food_records"
+  ) {
 
-      ? (
-          temporary?.photo_local ||
-          canonicalExisting?.photo_local ||
-          null
-        )
+    preservePhotoStateAfterPush(
+      localPhotoSource,
+      converted,
+      serverRecord
+    );
 
-      : undefined;
+  }
 
 
   const mergedRecord = {
@@ -1315,17 +2460,6 @@ async function reconcileCanonicalUid(
       "synced"
 
   };
-
-
-  if (
-    entity ===
-    "food_records"
-  ) {
-
-    mergedRecord.photo_local =
-      preservedPhotoLocal;
-
-  }
 
 
   await dbPut(
@@ -1545,28 +2679,9 @@ async function mergeServerRecord(
 
 
   syncDebug(
-    "PHOTO PULL BEFORE",
-    {
-      entity,
-
-      client_uid:
-        serverRecord.client_uid,
-
-      has_photo_local:
-        Boolean(
-          existing?.photo_local
-        ),
-
-      photo_local_length:
-        existing?.photo_local?.length ||
-        0
-    }
-  );
-
-
-  syncDebug(
     "PULL MERGE",
     {
+
       entity,
 
       client_uid:
@@ -1597,21 +2712,22 @@ async function mergeServerRecord(
         existing?.sync_status ??
         null,
 
-      place_name:
-        serverRecord.place_name ??
+      server_photo_key:
+        serverRecord.photo_key ??
         null,
 
-      shop_name:
-        serverRecord.shop_name ??
+      local_photo_key:
+        existing?.photo_key ??
         null,
 
-      title:
-        serverRecord.title ??
+      photo_local_key:
+        existing?.photo_local_key ??
         null,
 
-      name:
-        serverRecord.name ??
+      photo_pending_action:
+        existing?.photo_pending_action ??
         null
+
     }
   );
 
@@ -1631,6 +2747,8 @@ async function mergeServerRecord(
   /*
     Local 還有未同步修改，而且比 Server 新：
     不讓 Server 蓋掉 Local。
+
+    這同時保護尚未上傳完成的 local photo。
   */
 
   if (
@@ -1656,15 +2774,11 @@ async function mergeServerRecord(
     syncDebug(
       "PULL KEEP LOCAL",
       {
+
         entity,
 
         client_uid:
           existing.client_uid,
-
-        cloud_id:
-          existing.cloud_id ??
-          serverRecord.id ??
-          null,
 
         local_updated_at:
           existing.updated_at ??
@@ -1674,17 +2788,14 @@ async function mergeServerRecord(
           serverRecord.updated_at ??
           null,
 
-        local_deleted_at:
-          existing.deleted_at ??
+        photo_pending_action:
+          existing.photo_pending_action ??
           null,
 
-        server_deleted_at:
-          serverRecord.deleted_at ??
-          null,
-
-        local_sync_status:
-          existing.sync_status ??
+        photo_key:
+          existing.photo_key ??
           null
+
       }
     );
 
@@ -1702,22 +2813,24 @@ async function mergeServerRecord(
 
 
   /*
-    V2.2.3 / V2.3.0
+    V2.4.0
 
-    D1 / Worker 不保存 photo_local。
+    Server version 被接受時，
+    photo_key 也是 Server authoritative。
 
-    Pull Server → Local 時
-    必須保留本機照片。
+    僅保留真正對應同一 photo_key 的 Local cache。
   */
 
   if (
     entity ===
-      "food_records" &&
-    existing?.photo_local
+      "food_records"
   ) {
 
-    local.photo_local =
-      existing.photo_local;
+    applyServerPhotoState(
+      existing,
+      local,
+      serverRecord
+    );
 
   }
 
@@ -1725,6 +2838,7 @@ async function mergeServerRecord(
   syncDebug(
     "PULL ACCEPT SERVER",
     {
+
       entity,
 
       client_uid:
@@ -1743,21 +2857,15 @@ async function mergeServerRecord(
         serverRecord.deleted_at ??
         null,
 
-      place_name:
-        serverRecord.place_name ??
+      photo_key:
+        serverRecord.photo_key ??
         null,
 
-      shop_name:
-        serverRecord.shop_name ??
-        null,
+      preserve_photo_local:
+        Boolean(
+          local.photo_local
+        )
 
-      title:
-        serverRecord.title ??
-        null,
-
-      name:
-        serverRecord.name ??
-        null
     }
   );
 
@@ -1777,39 +2885,13 @@ async function mergeServerRecord(
   );
 
 
-  const photoCheckAfterPull =
-    await dbGet(
-      storeName,
-      serverRecord.client_uid
-    );
-
-
-  syncDebug(
-    "PHOTO PULL AFTER",
-    {
-      entity,
-
-      client_uid:
-        serverRecord.client_uid,
-
-      has_photo_local:
-        Boolean(
-          photoCheckAfterPull?.photo_local
-        ),
-
-      photo_local_length:
-        photoCheckAfterPull?.photo_local?.length ||
-        0
-    }
-  );
-
-
   await removeQueueItem(
     entity,
     serverRecord.client_uid
   );
 
 }
+
 
 /* =========================================================
    PREPARE SYNC PAYLOAD
@@ -1828,7 +2910,7 @@ function prepareSyncData(
 
 
   /*
-    Local-only fields
+    一般 Local-only fields
   */
 
   delete data.sync_status;
@@ -1836,36 +2918,67 @@ function prepareSyncData(
 
 
   /*
-    V2.2.3 / V2.3.0
+    V2.4.0 Food Local-only fields
 
-    photo_local 僅存在 Local IndexedDB。
-    不送到 Worker / D1。
+    photo_key：
+    → 要送 D1
+
+    以下全部不能送 D1：
+
+    photo_local
+    photo_local_key
+    photo_pending_action
+    photo_old_key
   */
 
   delete data.photo_local;
+
+  delete data.photo_local_key;
+
+  delete data.photo_pending_action;
+
+  delete data.photo_old_key;
 
 
   syncDebug(
     "PHOTO PAYLOAD CHECK",
     {
+
       entity,
 
       client_uid:
         record.client_uid,
 
-      local_has_photo:
+      photo_key:
+        record.photo_key ??
+        null,
+
+      has_photo_local:
         Boolean(
           record.photo_local
         ),
 
-      local_photo_length:
-        record.photo_local?.length ||
-        0,
+      photo_local_key:
+        record.photo_local_key ??
+        null,
+
+      pending_action:
+        record.photo_pending_action ??
+        null,
+
+      old_key:
+        record.photo_old_key ??
+        null,
+
+      payload_photo_key:
+        data.photo_key ??
+        null,
 
       payload_has_photo_local:
         Boolean(
           data.photo_local
         )
+
     }
   );
 
@@ -1928,6 +3041,576 @@ function prepareSyncData(
   return data;
 
 }
+/* =========================================================
+   PREPARE FOOD PHOTO BEFORE UPSERT
+   V2.4.0
+========================================================= */
+
+/*
+  回傳：
+
+  {
+    uploaded_new_photo: boolean,
+    uploaded_photo_key: string | null
+  }
+
+  注意：
+
+  上傳 R2 成功後：
+  - photo_key 更新為新 key
+  - photo_local_key 更新為同一 key
+  - photo_pending_action 仍先保留
+
+  必須等 D1 metadata 成功後，
+  才能真正清掉 pending state。
+*/
+
+async function prepareFoodPhotoBeforeUpsert(
+  record
+) {
+
+  const result = {
+
+    uploaded_new_photo:
+      false,
+
+    uploaded_photo_key:
+      null
+
+  };
+
+
+  if (
+    !record
+  ) {
+
+    return result;
+
+  }
+
+
+  record.photo_key =
+    normalizePhotoKey(
+      record.photo_key
+    );
+
+
+  record.photo_local_key =
+    normalizePhotoKey(
+      record.photo_local_key
+    );
+
+
+  record.photo_old_key =
+    normalizePhotoKey(
+      record.photo_old_key
+    );
+
+
+  record.photo_pending_action =
+    normalizePhotoPendingAction(
+      record.photo_pending_action
+    );
+
+
+  /*
+    =========================================================
+    Legacy V2.3.0 Local Photo Upgrade
+
+    舊資料：
+
+    photo_local 有值
+    photo_key 無
+    photo_local_key 無
+    photo_pending_action 無
+
+    → 視為需要 Upload。
+    =========================================================
+  */
+
+  if (
+    record.photo_local &&
+    !record.photo_key &&
+    !record.photo_local_key &&
+    !record.photo_pending_action
+  ) {
+
+    record.photo_pending_action =
+      "upload";
+
+
+    syncDebug(
+      "PHOTO LEGACY UPGRADE",
+      {
+
+        client_uid:
+          record.client_uid
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     PHOTO DELETE
+  ===================================================== */
+
+  if (
+    record.photo_pending_action ===
+      "delete"
+  ) {
+
+    /*
+      D1 要收到：
+
+      photo_key = null
+
+      舊 key 保存在 photo_old_key，
+      等 D1 成功後才 DELETE R2。
+    */
+
+    if (
+      !record.photo_old_key &&
+      record.photo_key
+    ) {
+
+      record.photo_old_key =
+        record.photo_key;
+
+    }
+
+
+    record.photo_key =
+      null;
+
+
+    record.photo_local =
+      null;
+
+
+    record.photo_local_key =
+      null;
+
+
+    await dbPut(
+      STORE_FOOD,
+      record
+    );
+
+
+    syncDebug(
+      "PHOTO DELETE PREPARED",
+      {
+
+        client_uid:
+          record.client_uid,
+
+        old_key:
+          record.photo_old_key ??
+          null
+
+      }
+    );
+
+
+    return result;
+
+  }
+
+
+  /* =====================================================
+     PHOTO UPLOAD
+  ===================================================== */
+
+  if (
+    record.photo_pending_action !==
+      "upload"
+  ) {
+
+    return result;
+
+  }
+
+
+  if (
+    !record.photo_local
+  ) {
+
+    throw new Error(
+      "照片標記為待上傳，但找不到 photo_local"
+    );
+
+  }
+
+
+  /*
+    已經完成 R2 Upload，
+    只是上一次在 D1 / cleanup 階段失敗。
+
+    此時：
+
+    photo_key === photo_local_key
+
+    → 不可再次 Upload，
+      直接重試 D1。
+  */
+
+  if (
+    record.photo_key &&
+    record.photo_local_key &&
+    record.photo_key ===
+      record.photo_local_key
+  ) {
+
+    syncDebug(
+      "PHOTO UPLOAD REUSE",
+      {
+
+        client_uid:
+          record.client_uid,
+
+        photo_key:
+          record.photo_key
+
+      }
+    );
+
+
+    return result;
+
+  }
+
+
+  const previousPhotoKey =
+    normalizePhotoKey(
+      record.photo_key
+    );
+
+
+  const upload =
+    await uploadCloudPhoto(
+      record.client_uid,
+      record.photo_local
+    );
+
+
+  const newPhotoKey =
+    normalizePhotoKey(
+      upload.photo_key
+    );
+
+
+  if (
+    !newPhotoKey
+  ) {
+
+    throw new Error(
+      "R2 upload succeeded but photo_key is missing"
+    );
+
+  }
+
+
+  /*
+    更換照片：
+
+    舊 R2 key 暫存，
+    等 D1 指向新 key 後才刪。
+  */
+
+  if (
+    previousPhotoKey &&
+    previousPhotoKey !==
+      newPhotoKey &&
+    !record.photo_old_key
+  ) {
+
+    record.photo_old_key =
+      previousPhotoKey;
+
+  }
+
+
+  record.photo_key =
+    newPhotoKey;
+
+
+  /*
+    目前 photo_local 確實就是
+    剛剛上傳的 R2 object。
+  */
+
+  record.photo_local_key =
+    newPhotoKey;
+
+
+  await dbPut(
+    STORE_FOOD,
+    record
+  );
+
+
+  result.uploaded_new_photo =
+    true;
+
+
+  result.uploaded_photo_key =
+    newPhotoKey;
+
+
+  syncDebug(
+    "PHOTO UPLOAD PREPARED",
+    {
+
+      client_uid:
+        record.client_uid,
+
+      new_key:
+        newPhotoKey,
+
+      old_key:
+        record.photo_old_key ??
+        null
+
+    }
+  );
+
+
+  return result;
+
+}
+
+
+/* =========================================================
+   FINALIZE FOOD PHOTO AFTER D1 UPSERT
+========================================================= */
+
+/*
+  呼叫條件：
+
+  Worker /api/sync/upsert 已成功回應。
+
+  順序：
+
+  1. D1 已經接受 photo_key / null
+  2. 再刪 photo_old_key
+  3. 再清掉 Local pending state
+
+  若刪 R2 失敗：
+  → throw
+  → queue 仍在
+  → 下次同步再重試
+
+  因此不會因清舊照片失敗而遺失 retry 能力。
+*/
+
+async function finalizeFoodPhotoAfterUpsert(
+  record
+) {
+
+  if (
+    !record
+  ) {
+
+    return;
+
+  }
+
+
+  const action =
+    normalizePhotoPendingAction(
+      record.photo_pending_action
+    );
+
+
+  const oldKey =
+    normalizePhotoKey(
+      record.photo_old_key
+    );
+
+
+  const currentKey =
+    normalizePhotoKey(
+      record.photo_key
+    );
+
+
+  /*
+    沒有照片 workflow，
+    不需要處理。
+  */
+
+  if (
+    !action &&
+    !oldKey
+  ) {
+
+    return;
+
+  }
+
+
+  /*
+    D1 已經成功指向新照片／null，
+    現在才安全刪除舊 R2 object。
+  */
+
+  if (
+    oldKey &&
+    oldKey !==
+      currentKey
+  ) {
+
+    await deleteCloudPhoto(
+      oldKey
+    );
+
+  }
+
+
+  /*
+    Upload 成功後，
+    photo_local 變成本機有效 cache。
+  */
+
+  if (
+    action ===
+      "upload" &&
+    currentKey &&
+    record.photo_local
+  ) {
+
+    record.photo_local_key =
+      currentKey;
+
+  }
+
+
+  /*
+    Delete 完成：
+    Local photo/cache 也必須保持清空。
+  */
+
+  if (
+    action ===
+      "delete"
+  ) {
+
+    record.photo_local =
+      null;
+
+
+    record.photo_local_key =
+      null;
+
+  }
+
+
+  record.photo_pending_action =
+    null;
+
+
+  record.photo_old_key =
+    null;
+
+
+  await dbPut(
+    STORE_FOOD,
+    record
+  );
+
+
+  syncDebug(
+    "PHOTO FINALIZED",
+    {
+
+      client_uid:
+        record.client_uid,
+
+      action,
+
+      photo_key:
+        record.photo_key ??
+        null
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   CLEAN UP UNADOPTED PHOTO
+========================================================= */
+
+/*
+  特殊情況：
+
+  本機先 Upload 新 R2 照片，
+  但 D1 LWW 回傳 server_wins。
+
+  代表剛上傳的新 R2 object
+  沒有成為 authoritative photo_key。
+
+  必須把這個新物件刪掉，
+  避免 orphan。
+*/
+
+async function cleanupUnadoptedUploadedPhoto(
+  photoState,
+  serverRecord
+) {
+
+  if (
+    !photoState?.uploaded_new_photo ||
+    !photoState.uploaded_photo_key
+  ) {
+
+    return;
+
+  }
+
+
+  const uploadedKey =
+    normalizePhotoKey(
+      photoState.uploaded_photo_key
+    );
+
+
+  const serverKey =
+    normalizePhotoKey(
+      serverRecord?.photo_key
+    );
+
+
+  if (
+    uploadedKey &&
+    uploadedKey !==
+      serverKey
+  ) {
+
+    syncDebug(
+      "PHOTO CLEAN UNADOPTED",
+      {
+
+        uploaded_key:
+          uploadedKey,
+
+        server_key:
+          serverKey
+
+      }
+    );
+
+
+    await deleteCloudPhoto(
+      uploadedKey
+    );
+
+  }
+
+}
 
 
 /* =========================================================
@@ -1953,7 +3636,7 @@ async function syncUpsertItem(
   }
 
 
-  const record =
+  let record =
     await dbGet(
       storeName,
       queueItem.client_uid
@@ -1984,23 +3667,104 @@ async function syncUpsertItem(
     record.client_uid;
 
 
+  /*
+    =========================================================
+    V2.4.0
+
+    Food 的照片必須在 D1 metadata Push 前處理。
+
+    Upload：
+    Local photo
+    → R2
+    → 得到 photo_key
+    → D1
+
+    Delete：
+    Local photo_key = null
+    → D1
+    → 成功後才 DELETE R2
+    =========================================================
+  */
+
+  let photoState = {
+
+    uploaded_new_photo:
+      false,
+
+    uploaded_photo_key:
+      null
+
+  };
+
+
+  if (
+    queueItem.entity ===
+      "food_records"
+  ) {
+
+    photoState =
+      await prepareFoodPhotoBeforeUpsert(
+        record
+      );
+
+
+    /*
+      prepareFoodPhotoBeforeUpsert()
+      可能已改 photo_key，
+      所以重新讀一次。
+    */
+
+    record =
+      await dbGet(
+        STORE_FOOD,
+        originalUid
+      );
+
+
+    if (
+      !record
+    ) {
+
+      throw new Error(
+        "Food record disappeared during photo preparation"
+      );
+
+    }
+
+  }
+
+
   syncDebug(
     "PHOTO PUSH BEFORE STATUS",
     {
+
       entity:
         queueItem.entity,
 
       client_uid:
         record.client_uid,
 
+      photo_key:
+        record.photo_key ??
+        null,
+
       has_photo_local:
         Boolean(
           record.photo_local
         ),
 
-      photo_local_length:
-        record.photo_local?.length ||
-        0
+      photo_local_key:
+        record.photo_local_key ??
+        null,
+
+      photo_pending_action:
+        record.photo_pending_action ??
+        null,
+
+      photo_old_key:
+        record.photo_old_key ??
+        null
+
     }
   );
 
@@ -2032,6 +3796,7 @@ async function syncUpsertItem(
   syncDebug(
     "PUSH UPSERT",
     {
+
       entity:
         queueItem.entity,
 
@@ -2050,30 +3815,14 @@ async function syncUpsertItem(
         record.deleted_at ??
         null,
 
-      place_name:
-        record.place_name ??
+      photo_key:
+        record.photo_key ??
         null,
 
-      shop_name:
-        record.shop_name ??
-        null,
+      photo_pending_action:
+        record.photo_pending_action ??
+        null
 
-      title:
-        record.title ??
-        null,
-
-      name:
-        record.name ??
-        null,
-
-      has_photo_local:
-        Boolean(
-          record.photo_local
-        ),
-
-      photo_local_length:
-        record.photo_local?.length ||
-        0
     }
   );
 
@@ -2118,20 +3867,101 @@ async function syncUpsertItem(
   syncDebug(
     "PUSH UPSERT RESULT",
     {
+
       entity:
         queueItem.entity,
 
       client_uid:
         record.client_uid,
 
+      result_type:
+        result.result ??
+        null,
+
       cloud_id:
         result.cloud_id ??
         result.record?.id ??
         null,
 
-      result
+      server_photo_key:
+        result.record?.photo_key ??
+        null
+
     }
   );
+
+
+  /*
+    =========================================================
+    SERVER WINS
+
+    如果這一輪剛 Upload 新照片，
+    但 Server LWW 較新，
+    新 R2 object 沒有被 D1 採用。
+
+    先刪 orphan，再接受 Server record。
+    =========================================================
+  */
+
+  if (
+    result.result ===
+      "server_wins" &&
+    result.record
+  ) {
+
+    if (
+      queueItem.entity ===
+        "food_records"
+    ) {
+
+      await cleanupUnadoptedUploadedPhoto(
+        photoState,
+        result.record
+      );
+
+    }
+
+
+    await mergeServerRecord(
+      queueItem.entity,
+      result.record
+    );
+
+
+    return;
+
+  }
+
+
+  /*
+    =========================================================
+    CLIENT WINS / D1 SUCCESS
+
+    D1 metadata 已成功，
+    現在才允許清舊 R2 object。
+    =========================================================
+  */
+
+  if (
+    queueItem.entity ===
+      "food_records"
+  ) {
+
+    /*
+      此時 record 仍是 original UID。
+
+      先完成 R2 old-key cleanup。
+
+      cleanup 若失敗會 throw，
+      reconcile 尚未移除 queue，
+      因此下次可以重試。
+    */
+
+    await finalizeFoodPhotoAfterUpsert(
+      record
+    );
+
+  }
 
 
   /*
@@ -2187,6 +4017,11 @@ async function syncUpsertItem(
 
 /* =========================================================
    DELETE ONE QUEUE ITEM
+========================================================= */
+
+/* =========================================================
+   DELETE ONE QUEUE ITEM
+   V2.4.0 SAFE R2 CLEANUP
 ========================================================= */
 
 async function syncDeleteItem(
@@ -2257,6 +4092,7 @@ async function syncDeleteItem(
   syncDebug(
     "PUSH DELETE",
     {
+
       entity:
         queueItem.entity,
 
@@ -2275,21 +4111,14 @@ async function syncDeleteItem(
         record.deleted_at ??
         null,
 
-      place_name:
-        record.place_name ??
+      photo_key:
+        record.photo_key ??
         null,
 
-      shop_name:
-        record.shop_name ??
-        null,
-
-      title:
-        record.title ??
-        null,
-
-      name:
-        record.name ??
+      photo_old_key:
+        record.photo_old_key ??
         null
+
     }
   );
 
@@ -2328,30 +4157,167 @@ async function syncDeleteItem(
   syncDebug(
     "PUSH DELETE RESULT",
     {
+
       entity:
         queueItem.entity,
 
       client_uid:
         record.client_uid,
 
-      cloud_id:
-        result.cloud_id ??
-        result.record?.id ??
-        null,
-
       result
+
     }
   );
 
 
+  const serverWins =
+
+    result.result ===
+      "server_wins" &&
+
+    Boolean(
+      result.record
+    );
+
+
   /*
-    Server 版本較新。
+    =========================================================
+    IMPORTANT LWW SAFETY
+
+    Server wins 且 Server record 尚未刪除：
+
+    → Local delete 已被較新的 Server data 擋下
+    → 絕對不可刪除 R2 photo
+    → 接受 Server authoritative record
+    =========================================================
   */
 
   if (
-    result.result ===
-      "server_wins" &&
-    result.record
+    serverWins &&
+    !result.record.deleted_at
+  ) {
+
+    syncDebug(
+      "FOOD DELETE SERVER WINS ACTIVE",
+      {
+
+        entity:
+          queueItem.entity,
+
+        client_uid:
+          record.client_uid,
+
+        server_photo_key:
+          result.record.photo_key ??
+          null
+
+      }
+    );
+
+
+    await mergeServerRecord(
+      queueItem.entity,
+      result.record
+    );
+
+
+    return;
+
+  }
+
+
+  /*
+    =========================================================
+    FOOD R2 CLEANUP
+
+    能進到這裡代表：
+
+    1. Local tombstone 已被 D1 接受
+       或
+
+    2. Server wins，
+       但 Server 本身也是 tombstone
+
+    此時才可以安全刪 R2。
+    =========================================================
+  */
+
+  if (
+    queueItem.entity ===
+      "food_records"
+  ) {
+
+    const keys =
+      new Set(
+        [
+
+          normalizePhotoKey(
+            record.photo_key
+          ),
+
+          normalizePhotoKey(
+            record.photo_old_key
+          ),
+
+          /*
+            如果 Server tombstone
+            還保留 photo_key，
+            一併清理。
+          */
+
+          serverWins
+            ? normalizePhotoKey(
+                result.record?.photo_key
+              )
+            : null
+
+        ]
+        .filter(
+          Boolean
+        )
+      );
+
+
+    for (
+      const key of
+      keys
+    ) {
+
+      await deleteCloudPhoto(
+        key
+      );
+
+    }
+
+
+    record.photo_local =
+      null;
+
+
+    record.photo_local_key =
+      null;
+
+
+    record.photo_pending_action =
+      null;
+
+
+    record.photo_old_key =
+      null;
+
+  }
+
+
+  /*
+    Server wins，
+    但 Server 也是 tombstone。
+
+    R2 已安全清除後，
+    接受 Server tombstone。
+  */
+
+  if (
+    serverWins
   ) {
 
     await mergeServerRecord(
@@ -2364,6 +4330,10 @@ async function syncDeleteItem(
 
   }
 
+
+  /*
+    Local delete accepted。
+  */
 
   record.cloud_id =
     result.cloud_id ??
@@ -2387,7 +4357,6 @@ async function syncDeleteItem(
 
 }
 
-
 /* =========================================================
    MARK QUEUE ERROR
 ========================================================= */
@@ -2404,23 +4373,12 @@ async function markQueueError(
 
 
   /*
-    V2.3.0 Cloud Authorization
+    Cloud Authorization 錯誤不是資料同步錯誤。
 
-    未授權不是資料同步錯誤。
-
-    可能情況：
-    - 沒有 Token
-    - Token 錯誤
-    - Worker TRAVEL_API_TOKEN 尚未設定
-
-    因此：
     - 不增加 retry_count
     - 不寫 last_error
-    - 不把 Local record 標成 error
+    - record 回 pending
     - queue 保留
-    - record 回到 pending
-
-    等使用者重新授權後即可再次同步。
   */
 
   if (
@@ -2461,6 +4419,7 @@ async function markQueueError(
     syncDebug(
       "QUEUE AUTH HOLD",
       {
+
         entity:
           queueItem.entity,
 
@@ -2478,6 +4437,7 @@ async function markQueueError(
           error?.code ??
           error?.data?.code ??
           null
+
       }
     );
 
@@ -2488,7 +4448,8 @@ async function markQueueError(
 
 
   /*
-    真正的同步錯誤才進 error / retry_count。
+    R2 / D1 / Network 真正錯誤：
+    保留 workflow state，讓下次 retry。
   */
 
   if (
@@ -2546,18 +4507,12 @@ async function markQueueError(
 
 }
 
+
 /* =========================================================
-   PUSH LOCAL → D1
+   PUSH LOCAL → D1 / R2
 ========================================================= */
 
 export async function pushPendingChanges() {
-
-  /*
-    V2.3.0
-
-    未授權時不碰 Worker，
-    queue 保留等待未來授權。
-  */
 
   if (
     !isCloudAuthorized()
@@ -2570,11 +4525,13 @@ export async function pushPendingChanges() {
 
 
     return {
+
       ok:
         false,
 
       skipped:
         "unauthorized"
+
     };
 
   }
@@ -2589,12 +4546,14 @@ export async function pushPendingChanges() {
   syncDebug(
     "QUEUE",
     {
+
       count:
         queue.length,
 
       items:
         queue.map(
           item => ({
+
             entity:
               item.entity,
 
@@ -2610,17 +4569,11 @@ export async function pushPendingChanges() {
 
             last_error:
               item.last_error ??
-              null,
-
-            created_at:
-              item.created_at ??
-              null,
-
-            updated_at:
-              item.updated_at ??
               null
+
           })
         )
+
     }
   );
 
@@ -2630,11 +4583,13 @@ export async function pushPendingChanges() {
   ) {
 
     return {
+
       ok:
         true,
 
       count:
         0
+
     };
 
   }
@@ -2713,10 +4668,8 @@ export async function pushPendingChanges() {
   ) {
 
     /*
-      若同步過程中 Token 被判定失效，
-      後續 queue item 直接停止。
-
-      不再一直打 401。
+      Token 若在同步途中失效，
+      後面的 queue 不再繼續打 Worker。
     */
 
     if (
@@ -2726,11 +4679,13 @@ export async function pushPendingChanges() {
       syncDebug(
         "PUSH STOP UNAUTHORIZED",
         {
+
           remaining_entity:
             item.entity,
 
           remaining_client_uid:
             item.client_uid
+
         }
       );
 
@@ -2775,6 +4730,7 @@ export async function pushPendingChanges() {
       syncDebug(
         "PUSH ERROR",
         {
+
           entity:
             item.entity,
 
@@ -2789,6 +4745,7 @@ export async function pushPendingChanges() {
             String(
               error
             )
+
         }
       );
 
@@ -2798,13 +4755,6 @@ export async function pushPendingChanges() {
         error
       );
 
-
-      /*
-        授權失效：
-
-        queue 已保留 pending，
-        本輪同步立即停止。
-      */
 
       if (
         isCloudAuthError(
@@ -2822,13 +4772,13 @@ export async function pushPendingChanges() {
 
 
   return {
+
     ok:
       isCloudAuthorized()
+
   };
 
 }
-
-
 /* =========================================================
    PULL D1 → LOCAL
 ========================================================= */
@@ -2836,8 +4786,6 @@ export async function pushPendingChanges() {
 export async function pullCloudChanges() {
 
   /*
-    V2.3.0
-
     未授權絕對不 Pull。
   */
 
@@ -2852,11 +4800,13 @@ export async function pullCloudChanges() {
 
 
     return {
+
       ok:
         false,
 
       skipped:
         "unauthorized"
+
     };
 
   }
@@ -2884,6 +4834,7 @@ export async function pullCloudChanges() {
   syncDebug(
     "PULL CHANGES",
     {
+
       since,
 
       server_time:
@@ -2913,6 +4864,7 @@ export async function pullCloudChanges() {
           result.expenses ||
           []
         ).length
+
     }
   );
 
@@ -2954,6 +4906,19 @@ export async function pullCloudChanges() {
     result.food_records ||
     []
   ) {
+
+    /*
+      V2.4.0：
+
+      mergeServerRecord() 會同時比較：
+
+      server photo_key
+      local photo_key
+      photo_local_key
+
+      決定本機 photo_local
+      是否仍為有效快取。
+    */
 
     await mergeServerRecord(
       "food_records",
@@ -3103,15 +5068,17 @@ export async function pullCloudChanges() {
 ========================================================= */
 
 /*
-  V2.3.0
+  V2.4.0
 
-  testCloudConnection() 同時檢查：
+  testCloudConnection() 檢查：
 
   1. Browser 是否 online
-  2. Worker public root 是否可連線
-  3. Worker version
-  4. 是否存在 Cloud Token
+  2. Worker public root
+  3. Worker version = 2.4.0
+  4. 是否有 Cloud Token
   5. Token 是否通過 /api/auth/check
+
+  R2 本身可另外由 testR2Connection() 測試。
 */
 
 export async function testCloudConnection() {
@@ -3150,7 +5117,7 @@ export async function testCloudConnection() {
   try {
 
     /*
-      Root 是 public endpoint，
+      Root 是 Public Endpoint，
       不需要 Token。
     */
 
@@ -3166,11 +5133,10 @@ export async function testCloudConnection() {
 
 
     /*
-      Worker 版本不符時，
-      先直接回報版本不一致。
+      Worker / Frontend 必須同版本。
 
-      避免前端 V2.3.0 對舊 Worker
-      進行授權 API 操作。
+      避免 V2.4.0 Frontend
+      對舊 Worker 執行 R2 workflow。
     */
 
     if (
@@ -3215,7 +5181,7 @@ export async function testCloudConnection() {
       沒有 Token：
 
       Worker 正常，
-      但目前裝置是 Local-only。
+      目前裝置維持 Local-only。
     */
 
     if (
@@ -3293,11 +5259,6 @@ export async function testCloudConnection() {
     error
   ) {
 
-    /*
-      Root public endpoint 本身失敗，
-      視為 Worker / Network error。
-    */
-
     const result = {
 
       ok:
@@ -3372,6 +5333,7 @@ export async function getSyncStatusSnapshot() {
 
 }
 
+
 /* =========================================================
    FULL SYNC
 ========================================================= */
@@ -3390,11 +5352,13 @@ export async function syncNow(
   ) {
 
     return {
+
       ok:
         false,
 
       skipped:
         "already-running"
+
     };
 
   }
@@ -3406,11 +5370,13 @@ export async function syncNow(
   ) {
 
     return {
+
       ok:
         false,
 
       skipped:
         "auto-sync-disabled"
+
     };
 
   }
@@ -3433,25 +5399,21 @@ export async function syncNow(
 
 
     return {
+
       ok:
         false,
 
       skipped:
         "offline"
+
     };
 
   }
 
 
-  /*
-    V2.3.0 Cloud Authorization
-
-    尚未授權時：
-    - 不 Push
-    - 不 Pull
-    - 不修改 queue
-    - 不把資料標成 error
-  */
+  /* =====================================================
+     CLOUD AUTHORIZATION
+  ===================================================== */
 
   if (
     !isCloudAuthorized()
@@ -3484,6 +5446,7 @@ export async function syncNow(
 
       hooks.onCloudState(
         {
+
           ok:
             false,
 
@@ -3495,26 +5458,30 @@ export async function syncNow(
 
           version:
             null
+
         }
       );
 
 
       return {
+
         ok:
           false,
 
         skipped:
           "unauthorized"
+
       };
 
     }
 
 
     /*
-      有 Token，但 Runtime 尚未驗證。
+      有 Token，
+      但 Runtime 尚未驗證。
 
-      Manual Sync 或其他明確 sync request
-      可先進行一次 Authorization Check。
+      Manual Sync / explicit sync
+      可以先驗證一次。
     */
 
     const auth =
@@ -3562,6 +5529,7 @@ export async function syncNow(
 
 
       return {
+
         ok:
           false,
 
@@ -3570,6 +5538,7 @@ export async function syncNow(
           "unauthorized",
 
         auth
+
       };
 
     }
@@ -3583,12 +5552,14 @@ export async function syncNow(
 
   hooks.onSyncState(
     {
+
       type:
         "sync-start",
 
       manual:
         options.manual ===
         true
+
     }
   );
 
@@ -3596,6 +5567,7 @@ export async function syncNow(
   syncDebug(
     "SYNC START",
     {
+
       manual:
         options.manual ===
         true,
@@ -3604,6 +5576,7 @@ export async function syncNow(
 
       cloud_authorized:
         isCloudAuthorized()
+
     }
   );
 
@@ -3611,19 +5584,20 @@ export async function syncNow(
   try {
 
     /*
-      1.
-      Local pending → D1
+      =====================================================
+      1. Local pending → R2 / D1
+
+      Food 有照片時：
+      R2 Upload
+      → D1 photo_key
+
+      一般資料：
+      → D1
+      =====================================================
     */
 
     await pushPendingChanges();
 
-
-    /*
-      如果 Push 過程收到 401，
-      api() 會立刻把 Runtime 切回 unauthorized。
-
-      此時不能繼續 Pull。
-    */
 
     if (
       !isCloudAuthorized()
@@ -3639,8 +5613,12 @@ export async function syncNow(
 
 
     /*
-      2.
-      D1 → Local
+      =====================================================
+      2. D1 → Local
+
+      Food Pull 同時處理 photo_key
+      與 Local photo cache validity。
+      =====================================================
     */
 
     await pullCloudChanges();
@@ -3660,8 +5638,9 @@ export async function syncNow(
 
 
     /*
-      3.
-      dependency 補齊後再 push 一次
+      =====================================================
+      3. Dependency 補齊後再 Push 一次
+      =====================================================
     */
 
     await pushPendingChanges();
@@ -3690,17 +5669,20 @@ export async function syncNow(
     syncDebug(
       "SYNC SUCCESS",
       {
+
         manual:
           options.manual ===
           true,
 
         snapshot
+
       }
     );
 
 
     hooks.onSyncState(
       {
+
         type:
           "sync-success",
 
@@ -3709,6 +5691,7 @@ export async function syncNow(
           true,
 
         snapshot
+
       }
     );
 
@@ -3718,17 +5701,19 @@ export async function syncNow(
     ) {
 
       hooks.onToast(
-        "☁️ D1 同步完成"
+        "☁️ 雲端同步完成"
       );
 
     }
 
 
     return {
+
       ok:
         true,
 
       snapshot
+
     };
 
   }
@@ -3759,6 +5744,7 @@ export async function syncNow(
       syncDebug(
         "SYNC AUTH HOLD",
         {
+
           error:
             error?.message ??
             String(
@@ -3766,18 +5752,21 @@ export async function syncNow(
             ),
 
           snapshot
+
         }
       );
 
 
       hooks.onSyncState(
         {
+
           type:
             "sync-auth-required",
 
           error,
 
           snapshot
+
         }
       );
 
@@ -3795,6 +5784,7 @@ export async function syncNow(
 
 
       return {
+
         ok:
           false,
 
@@ -3804,18 +5794,20 @@ export async function syncNow(
         error,
 
         snapshot
+
       };
 
     }
 
 
     /*
-      真正 Sync / Network / D1 錯誤。
+      真正的 Sync / Network / D1 / R2 錯誤。
     */
 
     syncDebug(
       "SYNC ERROR",
       {
+
         error:
           error?.message ??
           String(
@@ -3823,18 +5815,21 @@ export async function syncNow(
           ),
 
         snapshot
+
       }
     );
 
 
     hooks.onSyncState(
       {
+
         type:
           "sync-error",
 
         error,
 
         snapshot
+
       }
     );
 
@@ -3846,7 +5841,6 @@ export async function syncNow(
       hooks.onMessage(
         "同步失敗，但 Local 資料仍已保留：" +
         error.message,
-
         "error"
       );
 
@@ -3854,12 +5848,14 @@ export async function syncNow(
 
 
     return {
+
       ok:
         false,
 
       error,
 
       snapshot
+
     };
 
   }
@@ -3872,15 +5868,16 @@ export async function syncNow(
     syncDebug(
       "SYNC END",
       {
+
         running:
           syncRunning
+
       }
     );
 
   }
 
 }
-
 
 /* =========================================================
    SAVE LOCAL + OPTIONAL AUTO SYNC
@@ -3894,7 +5891,11 @@ export async function saveAndSync(
   /*
     Local-first：
 
-    無論是否授權，
+    無論：
+    - Offline
+    - 未授權
+    - Auto Sync OFF
+
     永遠先寫 IndexedDB。
   */
 
@@ -3908,14 +5909,90 @@ export async function saveAndSync(
   hooks.onDataChanged();
 
 
+  syncDebug(
+    "LOCAL SAVE",
+    {
+
+      entity,
+
+      client_uid:
+        saved?.client_uid ??
+        record?.client_uid ??
+        null,
+
+      sync_status:
+        saved?.sync_status ??
+        null,
+
+      photo_key:
+        entity ===
+          "food_records"
+
+          ? (
+              saved?.photo_key ??
+              null
+            )
+
+          : undefined,
+
+      has_photo_local:
+        entity ===
+          "food_records"
+
+          ? Boolean(
+              saved?.photo_local
+            )
+
+          : undefined,
+
+      photo_local_key:
+        entity ===
+          "food_records"
+
+          ? (
+              saved?.photo_local_key ??
+              null
+            )
+
+          : undefined,
+
+      photo_pending_action:
+        entity ===
+          "food_records"
+
+          ? (
+              saved?.photo_pending_action ??
+              null
+            )
+
+          : undefined,
+
+      photo_old_key:
+        entity ===
+          "food_records"
+
+          ? (
+              saved?.photo_old_key ??
+              null
+            )
+
+          : undefined
+
+    }
+  );
+
+
   /*
-    V2.3.0
+    V2.4.0
 
     Auto Sync 必須同時符合：
 
     - Online
     - Auto Sync ON
-    - Cloud 已授權
+    - Cloud Authorized
+
+    R2 Photo 也走同一個 syncNow()，
+    不另外啟動獨立背景流程。
   */
 
   if (
@@ -3953,20 +6030,29 @@ export async function deleteAndSync(
   syncDebug(
     "DELETE REQUEST",
     {
+
       entity,
 
       client_uid:
         clientUid
+
     }
   );
 
 
   /*
-    Local-first soft delete。
+    V2.4.0
 
-    即使未授權，
-    tombstone 仍保存在 Local，
-    等未來授權後再同步到 D1。
+    Food 整筆刪除時，
+    softDeleteLocalRecord() 必須保留：
+
+    photo_key
+    photo_old_key
+
+    在 tombstone 中。
+
+    syncDeleteItem() 會等 D1 tombstone
+    成功後才刪 R2。
   */
 
   const deleted =
@@ -3979,6 +6065,7 @@ export async function deleteAndSync(
   syncDebug(
     "DELETE LOCAL TOMBSTONE",
     {
+
       entity,
 
       client_uid:
@@ -3998,7 +6085,30 @@ export async function deleteAndSync(
 
       cloud_id:
         deleted?.cloud_id ??
-        null
+        null,
+
+      photo_key:
+        entity ===
+          "food_records"
+
+          ? (
+              deleted?.photo_key ??
+              null
+            )
+
+          : undefined,
+
+      photo_old_key:
+        entity ===
+          "food_records"
+
+          ? (
+              deleted?.photo_old_key ??
+              null
+            )
+
+          : undefined
+
     }
   );
 
@@ -4036,12 +6146,12 @@ export async function deleteAndSync(
 export async function retryAllErrors() {
 
   /*
-    V2.3.0
+    若目前尚未授權，
+    先交給 syncNow() 做授權判斷。
 
-    若未授權，先交給 syncNow() 做授權判斷。
-
-    不先修改 error queue，
-    避免只是沒有 Token 就把既有錯誤狀態洗掉。
+    不預先修改 error queue，
+    避免只是 Token 問題
+    就洗掉原本 error state。
   */
 
   if (
@@ -4051,11 +6161,13 @@ export async function retryAllErrors() {
     const authResult =
       await syncNow(
         {
+
           force:
             true,
 
           manual:
             true
+
         }
       );
 
@@ -4080,6 +6192,7 @@ export async function retryAllErrors() {
   syncDebug(
     "RETRY ERRORS",
     {
+
       total_queue:
         queue.length,
 
@@ -4093,6 +6206,7 @@ export async function retryAllErrors() {
           )
           .map(
             item => ({
+
               entity:
                 item.entity,
 
@@ -4109,8 +6223,10 @@ export async function retryAllErrors() {
               last_error:
                 item.last_error ??
                 null
+
             })
           )
+
     }
   );
 
@@ -4128,6 +6244,11 @@ export async function retryAllErrors() {
 
     }
 
+
+    /*
+      清除 last_error，
+      retry_count 保留作為歷史計數。
+    */
 
     item.last_error =
       null;
@@ -4169,6 +6290,17 @@ export async function retryAllErrors() {
       record
     ) {
 
+      /*
+        R2 workflow state 不動：
+
+        photo_pending_action
+        photo_old_key
+        photo_local
+        photo_local_key
+
+        下一次 Push 會從上一次失敗點繼續。
+      */
+
       record.sync_status =
         "pending";
 
@@ -4185,11 +6317,13 @@ export async function retryAllErrors() {
 
   return await syncNow(
     {
+
       force:
         true,
 
       manual:
         true
+
     }
   );
 
@@ -4217,8 +6351,10 @@ export function isSyncRunning() {
 /* =========================================================
    NETWORK EVENTS
 
-   api-sync.js 只處理 sync behavior，
-   Header / Authorization UI 由 main.js 更新。
+   api-sync.js 只處理 Sync Behavior。
+
+   Header / Authorization UI
+   由 main.js 更新。
 ========================================================= */
 
 window.addEventListener(
@@ -4227,8 +6363,10 @@ window.addEventListener(
 
     hooks.onSyncState(
       {
+
         type:
           "network-online"
+
       }
     );
 
@@ -4236,6 +6374,7 @@ window.addEventListener(
     syncDebug(
       "NETWORK ONLINE",
       {
+
         auto_sync_enabled:
           autoSyncEnabled,
 
@@ -4244,6 +6383,7 @@ window.addEventListener(
 
         cloud_auth_state:
           getCloudAuthState()
+
       }
     );
 
@@ -4251,9 +6391,14 @@ window.addEventListener(
     /*
       網路恢復時：
 
-      1. 先檢查 Worker
-      2. 若有 Token，再驗證 Authorization
-      3. 只有 authorized 才 Auto Sync
+      1. 檢查 Worker
+      2. 驗證 Authorization
+      3. authorized + Auto Sync ON
+         才執行同步
+
+      Food pending photo
+      也會在 syncNow() 中繼續：
+      R2 → D1 → cleanup
     */
 
     const cloud =
@@ -4287,8 +6432,10 @@ window.addEventListener(
 
     hooks.onSyncState(
       {
+
         type:
           "network-offline"
+
       }
     );
 
@@ -4299,8 +6446,21 @@ window.addEventListener(
     );
 
 
+    /*
+      注意：
+
+      Offline 只更新 UI state。
+
+      不清除：
+      - Token
+      - pending queue
+      - photo_pending_action
+      - photo_old_key
+    */
+
     hooks.onCloudState(
       {
+
         ok:
           false,
 
@@ -4312,6 +6472,7 @@ window.addEventListener(
 
         version:
           null
+
       }
     );
 
