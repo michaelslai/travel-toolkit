@@ -2438,8 +2438,18 @@ async function handleFoodPhotoSelected(
 /* =========================================================
    REMOVE PHOTO
 ========================================================= */
-
 async function removeFoodPhoto() {
+
+  /*
+    V2.4.2
+
+    UX 修正：
+    - 移除照片只標記 editor state，不立即寫 DB
+    - 不退出編輯模式
+    - 不直接刪 R2 / D1
+    - 明確提示使用者要再按「儲存修改」
+    - 避免照片區塊消失後畫面跳動造成誤判
+  */
 
   const editingUid =
     getElement(
@@ -2479,6 +2489,10 @@ async function removeFoodPhoto() {
     ) ||
 
     Boolean(
+      editingRecord?.photo_local
+    ) ||
+
+    Boolean(
       currentFoodCloudPreviewUrl
     );
 
@@ -2486,6 +2500,10 @@ async function removeFoodPhoto() {
   if (
     !hasAnyPhoto
   ) {
+
+    hooks.showToast(
+      "目前沒有可移除的照片"
+    );
 
     return;
 
@@ -2497,7 +2515,7 @@ async function removeFoodPhoto() {
 
       "移除照片",
 
-      "確定要移除目前這張美食照片嗎？"
+      "確定要移除目前這張照片嗎？\n\n移除後還需要按「儲存修改」才會正式套用。"
 
     );
 
@@ -2511,6 +2529,10 @@ async function removeFoodPhoto() {
   }
 
 
+  /* =====================================================
+     EDITOR STATE
+  ===================================================== */
+
   currentFoodPhoto =
     null;
 
@@ -2519,9 +2541,19 @@ async function removeFoodPhoto() {
     null;
 
 
+  /*
+    標記：
+    儲存修改時要進入
+    photo_pending_action = "delete"
+  */
+
   removeFoodPhotoRequested =
     true;
 
+
+  /*
+    移除與新照片 replacement 互斥。
+  */
 
   newFoodPhotoSelected =
     false;
@@ -2543,14 +2575,119 @@ async function removeFoodPhoto() {
   }
 
 
-  await renderFoodPhotoPreview();
+  /* =====================================================
+     PREVIEW UI
+  ===================================================== */
+
+  const wrap =
+    getElement(
+      "foodPhotoPreviewWrap"
+    );
+
+
+  const preview =
+    getElement(
+      "foodPhotoPreview"
+    );
+
+
+  if (
+    preview
+  ) {
+
+    preview.removeAttribute(
+      "src"
+    );
+
+  }
+
+
+  /*
+    V2.4.2
+    不再整個隱藏 preview wrap。
+
+    保留區塊高度，
+    避免畫面突然跳到下方 record list。
+  */
+
+  if (
+    wrap
+  ) {
+
+    wrap.classList.add(
+      "show"
+    );
+
+
+    wrap.innerHTML = `
+
+      <div
+        style="
+          padding:18px;
+          text-align:center;
+          color:#b42318;
+          background:#fff5f5;
+          border:1px solid #fecaca;
+          border-radius:12px;
+          line-height:1.7;
+        "
+      >
+
+        🗑️ 照片已標記移除
+
+        <br>
+
+        <strong>
+          請按「儲存修改」完成變更
+        </strong>
+
+      </div>
+
+    `;
+
+  }
 
 
   hooks.showToast(
-    "🗑️ 照片已移除"
+    "🗑️ 照片已標記移除，請按「儲存修改」"
   );
 
+
+  /* =====================================================
+     SCROLL TO SAVE BUTTON
+  ===================================================== */
+
+  const saveButton =
+    getElement(
+      "saveFoodButton"
+    );
+
+
+  if (
+    saveButton
+  ) {
+
+    setTimeout(
+      () => {
+
+        saveButton.scrollIntoView(
+          {
+            behavior:
+              "smooth",
+
+            block:
+              "center"
+          }
+        );
+
+      },
+      80
+    );
+
+  }
+
 }
+
 /* =========================================================
    FOOD EDIT INDICATOR
 ========================================================= */
