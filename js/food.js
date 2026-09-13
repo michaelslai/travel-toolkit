@@ -1,7 +1,14 @@
 /* =========================================================
-   Travel Toolkit V2.4.0 Modular
+   Travel Toolkit V2.4.1 Modular
    File: js/food.js
    Modified: 2026-09-13
+
+   【V2.4.1 Photo State Fix】
+   - 修正替換照片時 pending upload 可能遺失
+   - 新照片內容改變時即使 UI flag 被重設，仍判定為 replacement
+   - 新 replacement 不可沿用舊 photo_local_key
+   - 移除 food.js 全域 Legacy Photo Migration；舊照片只在實際 Push 時由 api-sync.js 升級
+   - IndexedDB schema 不變
 
    【V2.4.0 R2 Photo Sync】
    - 保留 V2.2.3 Food Feature Parity
@@ -132,16 +139,6 @@ const cloudFoodPhotoObjectUrls =
 
 const cloudFoodPhotoPromises =
   new Map();
-
-
-/*
-  V2.4.0
-
-  舊 V2.2.3 / V2.3.0 photo_local
-  第一次載入時只排入一次 upload queue。
-*/
-let legacyFoodPhotoMigrationStarted =
-  false;
 
 
 /*
@@ -303,113 +300,6 @@ export function setFoodData(
     data.trips ||
     [];
 
-
-  scheduleLegacyFoodPhotoMigration();
-
-}
-
-
-/* =========================================================
-   LEGACY LOCAL PHOTO MIGRATION
-   V2.4.0
-========================================================= */
-
-function scheduleLegacyFoodPhotoMigration() {
-
-  if (
-    legacyFoodPhotoMigrationStarted
-  ) {
-
-    return;
-
-  }
-
-
-  const legacyRecords =
-    foodRecords.filter(
-      record =>
-
-        !record.deleted_at &&
-
-        Boolean(
-          record.photo_local
-        ) &&
-
-        !record.photo_key &&
-
-        !record.photo_pending_action
-    );
-
-
-  if (
-    !legacyRecords.length
-  ) {
-
-    return;
-
-  }
-
-
-  legacyFoodPhotoMigrationStarted =
-    true;
-
-
-  setTimeout(
-    async () => {
-
-      try {
-
-        for (
-          const record of
-          legacyRecords
-        ) {
-
-          await saveAndSync(
-            "food_records",
-            {
-
-              ...record,
-
-              photo_key:
-                null,
-
-              photo_local_key:
-                null,
-
-              photo_pending_action:
-                "upload",
-
-              photo_old_key:
-                null
-
-            }
-          );
-
-        }
-
-
-        hooks.requestRefresh();
-
-
-        console.log(
-          `[Food V2.4.0] queued ${legacyRecords.length} legacy local photo(s) for R2 upload`
-        );
-
-      }
-      catch (
-        error
-      ) {
-
-        console.error(
-          "Legacy food photo migration failed:",
-          error
-        );
-
-      }
-
-    },
-    0
-  );
 
 }
 
@@ -723,7 +613,6 @@ function getGPSPosition() {
         .getCurrentPosition(
 
           resolve,
-
           reject,
 
           {
@@ -925,6 +814,7 @@ function getFoodPlaceTypeText(
   );
 
 }
+
 
 /* =========================================================
    SEARCH NEARBY FOOD PLACES
@@ -1241,8 +1131,6 @@ function parseNearbyFoodPlaces(
     );
 
 }
-
-
 /* =========================================================
    RENDER NEARBY
 ========================================================= */
@@ -1866,6 +1754,8 @@ function renderFoodRating() {
     );
 
 }
+
+
 /* =========================================================
    CLOUD PHOTO OBJECT URL
    V2.4.0
@@ -1956,10 +1846,6 @@ async function getCloudFoodPhotoObjectUrl(
   }
 
 
-  /*
-    已經下載過。
-  */
-
   if (
     cloudFoodPhotoObjectUrls.has(
       key
@@ -1972,11 +1858,6 @@ async function getCloudFoodPhotoObjectUrl(
 
   }
 
-
-  /*
-    已經正在下載，
-    共用同一個 Promise。
-  */
 
   if (
     cloudFoodPhotoPromises.has(
@@ -2071,19 +1952,8 @@ async function renderFoodPhotoPreview(
   }
 
 
-  /*
-    每次重新 render，
-    先清除目前 editor cloud preview reference。
-  */
-
   revokeCurrentFoodCloudPreviewUrl();
 
-
-  /*
-    =========================================================
-    1. Local photo 優先
-    =========================================================
-  */
 
   if (
     currentFoodPhoto
@@ -2103,14 +1973,6 @@ async function renderFoodPhotoPreview(
   }
 
 
-  /*
-    =========================================================
-    2. 若編輯既有紀錄，
-       沒 Local cache 但有 photo_key，
-       從 Private R2 下載。
-    =========================================================
-  */
-
   const photoKey =
     record?.photo_key ||
     null;
@@ -2121,10 +1983,6 @@ async function renderFoodPhotoPreview(
     navigator.onLine &&
     isCloudAuthorized()
   ) {
-
-    /*
-      先顯示 loading 狀態。
-    */
 
     preview.removeAttribute(
       "src"
@@ -2143,10 +2001,6 @@ async function renderFoodPhotoPreview(
           photoKey
         );
 
-
-      /*
-        防止 await 回來時使用者已切換到別筆紀錄。
-      */
 
       const editingUid =
         getElement(
@@ -2203,12 +2057,6 @@ async function renderFoodPhotoPreview(
 
   }
 
-
-  /*
-    =========================================================
-    3. 沒有可顯示照片
-    =========================================================
-  */
 
   preview.removeAttribute(
     "src"
@@ -2281,11 +2129,6 @@ function compressFoodImage(
 
           image.onload =
             () => {
-
-              /*
-                與單機版 Food V2.4.1 一致：
-                最長邊 1600px。
-              */
 
               const maxSize =
                 1600;
@@ -2374,12 +2217,6 @@ function compressFoodImage(
               }
 
 
-              /*
-                白底處理：
-                PNG / HEIC 轉 JPEG 時，
-                避免透明區變成黑色。
-              */
-
               context.fillStyle =
                 "#ffffff";
 
@@ -2406,11 +2243,6 @@ function compressFoodImage(
 
 
               try {
-
-                /*
-                  與單機版一致：
-                  JPEG quality 0.78。
-                */
 
                 const result =
                   canvas.toDataURL(
@@ -2534,7 +2366,6 @@ async function handleFoodPhotoSelected(
 
       這次確實選了新照片。
     */
-
     newFoodPhotoSelected =
       true;
 
@@ -2543,14 +2374,9 @@ async function handleFoodPhotoSelected(
       選新照片，
       代表取消原本的「移除照片」狀態。
     */
-
     removeFoodPhotoRequested =
       false;
 
-
-    /*
-      新 Local photo 應立刻蓋過 cloud preview。
-    */
 
     currentFoodCloudPreviewUrl =
       null;
@@ -2614,15 +2440,6 @@ async function handleFoodPhotoSelected(
 ========================================================= */
 
 async function removeFoodPhoto() {
-
-  /*
-    V2.4.0
-
-    沒有 Local photo，
-    但目前編輯紀錄可能有 Cloud photo。
-
-    因此不能只看 currentFoodPhoto。
-  */
 
   const editingUid =
     getElement(
@@ -2706,10 +2523,6 @@ async function removeFoodPhoto() {
     true;
 
 
-  /*
-    移除不是「選了新照片」。
-  */
-
   newFoodPhotoSelected =
     false;
 
@@ -2738,8 +2551,6 @@ async function removeFoodPhoto() {
   );
 
 }
-
-
 /* =========================================================
    FOOD EDIT INDICATOR
 ========================================================= */
@@ -3173,6 +2984,8 @@ export function resetFoodForm() {
   renderFoodPhotoPreview();
 
 }
+
+
 /* =========================================================
    FIND LINKED EXPENSE
 ========================================================= */
@@ -3359,7 +3172,7 @@ async function saveFood() {
 
   /* =====================================================
      PHOTO STATE DECISION
-     V2.4.0
+     V2.4.1
   ===================================================== */
 
   const oldPhotoKey =
@@ -3383,6 +3196,55 @@ async function saveFood() {
   const oldPendingAction =
     old?.photo_pending_action ||
     null;
+
+
+  /*
+    V2.4.1
+
+    正常情況：
+      使用者選新照片時
+      newFoodPhotoSelected = true。
+
+    防呆：
+      如果畫面 refresh / render 時序
+      讓 newFoodPhotoSelected 意外被清掉，
+      但 currentFoodPhoto 已經與資料庫原本的
+      photo_local 不同，
+      仍必須視為新照片。
+
+    避免：
+      新 Base64
+      + 舊 photo_local_key
+      + pending_action=null
+  */
+
+  const photoContentChanged =
+
+    Boolean(
+      editingUid
+    ) &&
+
+    Boolean(
+      currentFoodPhoto
+    ) &&
+
+    currentFoodPhoto !==
+      (
+        old?.photo_local ||
+        null
+      );
+
+
+  const hasNewPhoto =
+
+    Boolean(
+      currentFoodPhoto
+    ) &&
+
+    (
+      newFoodPhotoSelected ||
+      photoContentChanged
+    );
 
 
   let photoLocal =
@@ -3471,12 +3333,12 @@ async function saveFood() {
     =========================================================
     CASE B
     使用者選了新照片
+    V2.4.1：或偵測到 photo_local 內容已改變
     =========================================================
   */
 
   else if (
-    newFoodPhotoSelected &&
-    currentFoodPhoto
+    hasNewPhoto
   ) {
 
     photoLocal =
@@ -3486,6 +3348,10 @@ async function saveFood() {
     /*
       新 Local photo 尚未上 R2，
       所以 local cache 暫時沒有對應 key。
+
+      V2.4.1：
+      這裡一定必須清成 null，
+      絕不能沿用舊 photo_local_key。
     */
 
     photoLocalKey =
@@ -3747,7 +3613,7 @@ async function saveFood() {
 
     /* =====================================================
        PHOTO
-       V2.4.0
+       V2.4.1
     ===================================================== */
 
     photo_local:
@@ -3794,10 +3660,11 @@ async function saveFood() {
 
   /* =====================================================
      PHOTO DEBUG
+     V2.4.1
   ===================================================== */
 
   console.log(
-    "[Food V2.4.0] save photo state",
+    "[Food V2.4.1] save photo state",
     {
 
       client_uid:
@@ -3810,6 +3677,12 @@ async function saveFood() {
 
       new_photo_selected:
         newFoodPhotoSelected,
+
+      photo_content_changed:
+        photoContentChanged,
+
+      has_new_photo:
+        hasNewPhoto,
 
       remove_requested:
         removeFoodPhotoRequested,
@@ -4764,6 +4637,8 @@ function updateFoodFilterUI() {
   }
 
 }
+
+
 /* =========================================================
    DISPLAY RECORDS
 ========================================================= */
@@ -5042,8 +4917,6 @@ function formatFoodDateTitle(
   );
 
 }
-
-
 function formatMoney(
   record
 ) {
@@ -5882,7 +5755,6 @@ function foodRecordCardHtml(
 
       </div>
 
-
       ${
         record.food_name
 
@@ -5902,11 +5774,9 @@ function foodRecordCardHtml(
           : ""
       }
 
-
       ${foodRecordPhotoHtml(
         record
       )}
-
 
       ${
         stars
@@ -5921,7 +5791,6 @@ function foodRecordCardHtml(
 
           : ""
       }
-
 
       ${
         tags.length
@@ -5940,7 +5809,6 @@ function foodRecordCardHtml(
 
           : ""
       }
-
 
       <div class="record-meta">
 
@@ -5961,7 +5829,6 @@ function foodRecordCardHtml(
         )}
 
       </div>
-
 
       ${
         record.amount !==
@@ -5987,7 +5854,6 @@ function foodRecordCardHtml(
           : ""
       }
 
-
       ${
         record.address
 
@@ -6006,7 +5872,6 @@ function foodRecordCardHtml(
 
           : ""
       }
-
 
       ${
         record.note
@@ -6353,13 +6218,11 @@ export function renderFoodRecords() {
 
                 </div>
 
-
                 <div class="food-date-toggle">
                   ▼
                 </div>
 
               </button>
-
 
               <div class="food-date-records">
 
@@ -6380,8 +6243,7 @@ export function renderFoodRecords() {
         }
       )
       .join(
-        ""
-      );
+        "");
 
 
   /*
@@ -6550,14 +6412,13 @@ function toggleFoodDate(
 
 }
 
+
 /* =========================================================
    BIND EVENTS
 ========================================================= */
 
 let eventsBound =
   false;
-
-
 function bindFoodEvents() {
 
   if (
@@ -6930,7 +6791,6 @@ function bindFoodEvents() {
   → URL.createObjectURL()
 
   ObjectURL 只存在目前頁面 session。
-
   離開頁面時統一 revoke，
   避免長時間使用造成 browser memory leak。
 */
