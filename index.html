@@ -17,17 +17,28 @@
 
 
   <!-- =====================================================
-       Travel Toolkit V2.2.2 Modular
+       Travel Toolkit V2.3.0 Modular
        File: index.html
-       Modified: 2026-09-12
+       Modified: 2026-09-13
 
-       V2.2.2 Changes:
+       V2.3.0 Changes:
+       - 新增 Cloud Authorization UI
+       - 新增 Cloud Token 輸入 / 驗證 / 更換 / 清除
+       - 未授權維持 Local-only
+       - 已授權才可使用 D1 Sync
+       - Header 顯示 Local / Authorized 狀態
+       - Worker API 升級至 V2.3.0
+       - 保留 Footprint / Food / Expense / Trip 既有功能
+       - 保留 Local-first 架構
+
+       V2.2.3:
+       - Food Feature Parity
+       - Local Photo
+
+       V2.2.2:
        - Footprint 地圖 ↔ 紀錄雙向定位
        - Footprint 每日站點編號 / 高亮
-       - 補回旅程摘要 / 旅行統計 / 每日摘要
-       - 補回前一站距離 / 下一站時間
-       - 補回最新一筆 / 回地圖
-       - 保留 Local-first + D1 Sync
+       - 旅程摘要 / 旅行統計 / 每日摘要
   ====================================================== -->
 
 
@@ -41,7 +52,7 @@
   <!-- App CSS -->
   <link
     rel="stylesheet"
-    href="./css/app.css?v=2.2.2"
+    href="./css/app.css?v=2.3.0"
   >
 </head>
 
@@ -70,7 +81,7 @@
           id="appVersion"
           class="app-version"
         >
-          V2.2.2
+          V2.3.0
         </div>
 
       </div>
@@ -2045,6 +2056,101 @@
     >
 
 
+      <!-- =================================================
+           CLOUD AUTHORIZATION
+           Travel Toolkit V2.3.0
+      ================================================== -->
+
+      <div class="card">
+
+        <h2 class="card-title">
+          🔐 雲端授權
+        </h2>
+
+
+        <p class="card-subtitle">
+          未授權時 Travel Toolkit 仍可正常使用，
+          資料只保存在目前裝置。
+          授權成功後才會啟用 D1 雲端同步。
+        </p>
+
+
+        <div class="form-group">
+
+          <label for="cloudTokenInput">
+            Cloud Token
+          </label>
+
+
+          <input
+            type="password"
+            id="cloudTokenInput"
+            placeholder="輸入 Cloud Token"
+            autocomplete="new-password"
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+          >
+
+
+          <div
+            style="
+              margin-top:8px;
+              color:#777;
+              font-size:12px;
+              line-height:1.6;
+            "
+          >
+            Token 只儲存在目前瀏覽器，
+            不會寫入 GitHub。
+          </div>
+
+        </div>
+
+
+        <div
+          class="button-row"
+          style="margin-top:14px;"
+        >
+
+          <button
+            type="button"
+            id="cloudAuthVerifyButton"
+            class="btn btn-primary"
+          >
+            🔐 驗證並儲存
+          </button>
+
+
+          <button
+            type="button"
+            id="cloudAuthClearButton"
+            class="btn-gray"
+          >
+            🔒 清除授權
+          </button>
+
+        </div>
+
+
+        <div
+          id="cloudAuthStatusText"
+          style="
+            margin-top:12px;
+            padding:10px 12px;
+            border-radius:10px;
+            background:#f6f7f9;
+            color:#555;
+            font-size:13px;
+            line-height:1.6;
+          "
+        >
+          🔒 尚未授權雲端功能，目前所有資料只保存在此裝置。
+        </div>
+
+      </div>      
+      
+
       <!-- Auto Sync -->
 
       <div class="card">
@@ -2329,15 +2435,19 @@
 
       <div class="app-info">
 
-        Travel Toolkit V2.2.2 Modular
+        Travel Toolkit V2.3.0 Modular
 
         <br>
 
-        Worker API V2.1.1
+        Worker API V2.3.0
 
         <br>
 
-        Local-first + Cloudflare D1
+        Local-first + Cloud Authorization + Cloudflare D1
+
+        <br>
+
+        未授權 = Local-only
 
       </div>
 
@@ -2424,7 +2534,7 @@
 
 <script
   type="module"
-  src="./js/main.js?v=2.2.2"
+  src="./js/main.js?v=2.3.0"
 ></script>
 </body>
 </html>  
