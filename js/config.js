@@ -1,24 +1,77 @@
 /* =========================================================
-   Travel Toolkit V2.2.0 Modular
+   Travel Toolkit V2.3.0 Modular
    File: js/config.js
-   Modified: 2026-09-12
+   Modified: 2026-09-13
 
-   Changes:
+   【V2.3.0】
+   - 新增 Cloud Authorization 全域設定
+   - APP_VERSION 升級為 2.3.0
+   - EXPECTED_API_VERSION 升級為 2.3.0
+   - 新增 Cloud Token LocalStorage Key
+   - 新增 Worker Authorization Header 名稱
+   - 未授權時維持 Local-only 模式
+   - IndexedDB schema 不變，DB_VERSION 維持 4
+
+   【V2.2.3】
+   - Food Feature Parity
+   - local photo / photo_local 支援
+   - Sync 保留本機照片
+
+   【V2.2.0】
    - 從 V2.1.2 index.html 抽離全域設定
-   - 不修改任何既有功能
    - Worker API 維持 V2.1.1
 ========================================================= */
 
+
+/* =========================================================
+   APP / API VERSION
+========================================================= */
+
 export const APP_VERSION =
-  "2.2.3";
+  "2.3.0";
 
 
 export const EXPECTED_API_VERSION =
-  "2.1.1";
+  "2.3.0";
 
 
 export const API_BASE =
   "https://travel-api.michael-slai.workers.dev";
+
+
+/* =========================================================
+   CLOUD AUTHORIZATION
+========================================================= */
+
+/*
+  Cloud Token 只儲存在目前瀏覽器。
+
+  注意：
+  - 不可把真正 Token 寫死在這個檔案
+  - 不可 commit Token 到 GitHub
+  - 這裡只定義 LocalStorage Key
+*/
+
+export const CLOUD_TOKEN_STORAGE_KEY =
+  "travelToolkitCloudToken";
+
+
+/*
+  Worker V2.3.0 使用：
+
+  X-Travel-Token: <token>
+*/
+
+export const CLOUD_AUTH_HEADER =
+  "X-Travel-Token";
+
+
+/*
+  Worker Token 驗證 API
+*/
+
+export const CLOUD_AUTH_CHECK_PATH =
+  "/api/auth/check";
 
 
 /* =========================================================
@@ -30,10 +83,10 @@ export const DB_NAME =
 
 
 /*
-  V2.2.0 只是模組化，
-  IndexedDB schema 不變。
+  V2.3.0 只有 Cloud Authorization。
 
-  維持版本 4，
+  IndexedDB object store schema 不變，
+  因此維持版本 4，
   避免不必要的 upgrade。
 */
 
