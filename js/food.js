@@ -1,7 +1,14 @@
 /* =========================================================
-   Travel Toolkit V2.4.1 Modular
+   Travel Toolkit V2.4.2 Modular
    File: js/food.js
-   Modified: 2026-09-13
+   Modified: 2026-09-14
+
+   【V2.4.2 Pending Delete UI Fix】
+   - Auto Sync OFF 時，photo_pending_action=delete 立即隱藏照片
+   - pending delete 不再從舊 photo_key / R2 重新載入照片
+   - 再次進入編輯模式時，pending delete 維持無照片狀態
+   - 保留 V2.4.1 replacement / R2 sync 狀態機
+   - IndexedDB schema 不變
 
    【V2.4.1 Photo State Fix】
    - 修正替換照片時 pending upload 可能遺失
@@ -1955,6 +1962,38 @@ async function renderFoodPhotoPreview(
   revokeCurrentFoodCloudPreviewUrl();
 
 
+  /*
+    V2.4.2
+
+    Local 已標記 photo_pending_action="delete" 時，
+    photo_key 可能仍暫時保留舊 R2 key，
+    供 sync engine 完成：
+
+    D1 photo_key=null
+    → DELETE old R2
+
+    但 UI 不可以因此把舊照片重新顯示。
+  */
+  if (
+    record?.photo_pending_action ===
+      "delete"
+  ) {
+
+    preview.removeAttribute(
+      "src"
+    );
+
+
+    wrap.classList.remove(
+      "show"
+    );
+
+
+    return;
+
+  }
+
+
   if (
     currentFoodPhoto
   ) {
@@ -2433,8 +2472,6 @@ async function handleFoodPhotoSelected(
   }
 
 }
-
-
 /* =========================================================
    REMOVE PHOTO
 ========================================================= */
@@ -2551,6 +2588,8 @@ async function removeFoodPhoto() {
   );
 
 }
+
+
 /* =========================================================
    FOOD EDIT INDICATOR
 ========================================================= */
@@ -4122,22 +4161,40 @@ export function editFood(
 
   /* =====================================================
      PHOTO
-     V2.4.0
+     V2.4.2
   ===================================================== */
 
   /*
-    Local cache 有值：
-    → 直接顯示 Base64。
+    V2.4.2
 
-    Local cache 沒有：
-    → currentFoodPhoto = null
-    → renderFoodPhotoPreview(record)
-       會依 photo_key 從 Private R2 取得。
+    如果 Local record 已經是 pending delete：
+
+      photo_pending_action = "delete"
+
+    photo_key 可能還保留舊 R2 key，
+    但使用者已經在 Local 明確要求刪除照片。
+
+    因此再次進入編輯時：
+    - 不載入 photo_local
+    - 不顯示舊 R2
   */
 
+  const photoPendingDelete =
+
+    record.photo_pending_action ===
+      "delete";
+
+
   currentFoodPhoto =
-    record.photo_local ||
-    null;
+
+    photoPendingDelete
+
+      ? null
+
+      : (
+          record.photo_local ||
+          null
+        );
 
 
   currentFoodCloudPreviewUrl =
@@ -4174,10 +4231,13 @@ export function editFood(
 
 
   /*
-    不需要 await。
+    renderFoodPhotoPreview()
+    V2.4.2 本身也會檢查
+    photo_pending_action="delete"。
 
-    Local photo 會立即 render；
-    Cloud photo 則背景 fetch 後顯示。
+    因此即使 record.photo_key
+    還保留舊 R2 key，
+    也不會重新載入。
   */
 
   renderFoodPhotoPreview(
@@ -4917,6 +4977,8 @@ function formatFoodDateTitle(
   );
 
 }
+
+
 function formatMoney(
   record
 ) {
@@ -5531,16 +5593,42 @@ function buildFoodDailySummary(
   );
 
 }
-
-
 /* =========================================================
    RECORD PHOTO HTML
-   V2.4.0
+   V2.4.2
 ========================================================= */
 
 function foodRecordPhotoHtml(
   record
 ) {
+
+  /*
+    V2.4.2
+
+    Local 已經要求刪除照片時，
+    photo_key 可能仍暫時保留舊 R2 key，
+    等待之後同步：
+
+    D1 photo_key=null
+    → DELETE old R2
+
+    在這個 pending 階段，
+    UI 必須視為「已無照片」。
+
+    否則 Auto Sync OFF 時，
+    會因舊 photo_key 還存在，
+    又把 R2 舊照片顯示回來。
+  */
+
+  if (
+    record.photo_pending_action ===
+      "delete"
+  ) {
+
+    return "";
+
+  }
+
 
   /*
     Local cache 永遠優先。
@@ -5755,6 +5843,7 @@ function foodRecordCardHtml(
 
       </div>
 
+
       ${
         record.food_name
 
@@ -5774,9 +5863,11 @@ function foodRecordCardHtml(
           : ""
       }
 
+
       ${foodRecordPhotoHtml(
         record
       )}
+
 
       ${
         stars
@@ -5791,6 +5882,7 @@ function foodRecordCardHtml(
 
           : ""
       }
+
 
       ${
         tags.length
@@ -5809,6 +5901,7 @@ function foodRecordCardHtml(
 
           : ""
       }
+
 
       <div class="record-meta">
 
@@ -5829,6 +5922,7 @@ function foodRecordCardHtml(
         )}
 
       </div>
+
 
       ${
         record.amount !==
@@ -5854,6 +5948,7 @@ function foodRecordCardHtml(
           : ""
       }
 
+
       ${
         record.address
 
@@ -5872,6 +5967,7 @@ function foodRecordCardHtml(
 
           : ""
       }
+
 
       ${
         record.note
@@ -5928,7 +6024,7 @@ function foodRecordCardHtml(
 
 /* =========================================================
    HYDRATE CLOUD PHOTOS
-   V2.4.0
+   V2.4.2
 ========================================================= */
 
 async function hydrateFoodCloudPhotos() {
@@ -5972,11 +6068,53 @@ async function hydrateFoodCloudPhotos() {
       "";
 
 
+    const foodUid =
+      image.dataset.foodCloudPhotoUid ||
+      "";
+
+
     if (
       !photoKey
     ) {
 
       continue;
+
+    }
+
+
+    /*
+      V2.4.2
+
+      Double guard：
+
+      foodRecordPhotoHtml() 正常情況下
+      pending delete 根本不會產生這個 img。
+
+      但如果 hydrate 等待 fetch 期間，
+      Local record 又被更新為 delete，
+      這裡再次確認狀態，避免舊照片晚到後顯示。
+    */
+
+    if (
+      foodUid
+    ) {
+
+      const latestRecord =
+        foodRecords.find(
+          record =>
+            record.client_uid ===
+            foodUid
+        );
+
+
+      if (
+        latestRecord?.photo_pending_action ===
+          "delete"
+      ) {
+
+        continue;
+
+      }
 
     }
 
@@ -6025,6 +6163,42 @@ async function hydrateFoodCloudPhotos() {
       ) {
 
         continue;
+
+      }
+
+
+      /*
+        V2.4.2
+
+        fetch 完成後再做一次最新 Local state 檢查。
+
+        避免：
+        fetch 開始時不是 delete
+        → 使用者途中刪除照片
+        → 舊 R2 fetch 晚回來
+        → 又把照片顯示回去。
+      */
+
+      if (
+        foodUid
+      ) {
+
+        const latestRecord =
+          foodRecords.find(
+            record =>
+              record.client_uid ===
+              foodUid
+          );
+
+
+        if (
+          latestRecord?.photo_pending_action ===
+            "delete"
+        ) {
+
+          continue;
+
+        }
 
       }
 
@@ -6218,11 +6392,13 @@ export function renderFoodRecords() {
 
                 </div>
 
+
                 <div class="food-date-toggle">
                   ▼
                 </div>
 
               </button>
+
 
               <div class="food-date-records">
 
@@ -6243,7 +6419,8 @@ export function renderFoodRecords() {
         }
       )
       .join(
-        "");
+        ""
+      );
 
 
   /*
@@ -6419,6 +6596,8 @@ function toggleFoodDate(
 
 let eventsBound =
   false;
+
+
 function bindFoodEvents() {
 
   if (
@@ -6445,11 +6624,9 @@ function bindFoodEvents() {
     "click",
     getFoodGPS
   );
-
-
-  /* =====================================================
-     SAVE
-  ===================================================== */
+   /* =====================================================
+   SAVE
+===================================================== */
 
   getElement(
     "saveFoodButton"
@@ -6736,7 +6913,6 @@ function bindFoodEvents() {
           clientUid
         );
 
-
         return;
 
       }
@@ -6752,7 +6928,6 @@ function bindFoodEvents() {
         deleteFood(
           clientUid
         );
-
 
         return;
 
