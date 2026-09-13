@@ -1,3 +1,5 @@
+<!-- ===== START PART 1/4 ===== -->
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -17,19 +19,28 @@
 
 
   <!-- =====================================================
-       Travel Toolkit V2.3.0 Modular
+       Travel Toolkit V2.4.0 Modular
        File: index.html
        Modified: 2026-09-13
 
-       V2.3.0 Changes:
-       - 新增 Cloud Authorization UI
-       - 新增 Cloud Token 輸入 / 驗證 / 更換 / 清除
+       V2.4.0 Changes:
+       - 新增 Cloudflare R2 美食照片同步
+       - 美食照片維持 Local-first
+       - 照片先存 IndexedDB，再同步至 Private R2
+       - D1 儲存 photo_key
+       - 跨裝置使用 authenticated fetch 載入 R2 照片
+       - Header 顯示 D1 / R2 雲端狀態
+       - Sync UI 更新為 D1 + R2 雲端同步
+       - Worker API 升級至 V2.4.0
+       - 保留 Footprint / Food / Expense / Trip / Backup 功能
+       - IndexedDB schema 不變
+
+       V2.3.0:
+       - Cloud Authorization UI
+       - Cloud Token 輸入 / 驗證 / 更換 / 清除
        - 未授權維持 Local-only
-       - 已授權才可使用 D1 Sync
+       - 授權後使用 Cloud Sync
        - Header 顯示 Local / Authorized 狀態
-       - Worker API 升級至 V2.3.0
-       - 保留 Footprint / Food / Expense / Trip 既有功能
-       - 保留 Local-first 架構
 
        V2.2.3:
        - Food Feature Parity
@@ -52,7 +63,7 @@
   <!-- App CSS -->
   <link
     rel="stylesheet"
-    href="./css/app.css?v=2.3.0"
+    href="./css/app.css?v=2.4.0"
   >
 </head>
 
@@ -81,7 +92,7 @@
           id="appVersion"
           class="app-version"
         >
-          V2.3.0
+          V2.4.0
         </div>
 
       </div>
@@ -101,7 +112,7 @@
           id="cloudStatus"
           class="status-pill muted"
         >
-          ☁️ D1
+          ☁️ 雲端
         </span>
 
 
@@ -677,29 +688,22 @@
     </section>
 
 
-    <!-- ===================================================
-         FOOD PANEL
-    ==================================================== -->
+<!-- ===== END PART 1/4 ===== -->
+
+    <!-- ===== START PART 2/4 ===== -->
+
 
     <!-- ===================================================
          FOOD PANEL
-         Travel Toolkit V2.2.3
-         Food Feature Parity
-         
-         Changes:
-         - Food V2.4.1 單機版功能回補
-         - 美食統計
-         - 搜尋 / 餐別 / 分類 / 推薦篩選
-         - GPS + Nearby 店家
-         - Local Photo 選取 / 預覽
-         - 保留 Local-first + D1 Sync
-         - 保留 Food → Expense
+         Travel Toolkit V2.4.0
+         Local-first + Private R2 Photo Sync
     ==================================================== -->
 
     <section
       id="panel-food"
       class="tab-panel"
     >
+
 
       <!-- =================================================
            FOOD SUMMARY
@@ -836,9 +840,7 @@
         </button>
 
 
-        <!-- ===============================================
-             FILTER PANEL
-        ================================================ -->
+        <!-- FILTER PANEL -->
 
         <div
           id="foodFilterPanel"
@@ -868,7 +870,6 @@
                 全部
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -877,7 +878,6 @@
               >
                 早餐
               </button>
-
 
               <button
                 type="button"
@@ -888,7 +888,6 @@
                 午餐
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -897,7 +896,6 @@
               >
                 下午茶
               </button>
-
 
               <button
                 type="button"
@@ -908,7 +906,6 @@
                 晚餐
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -917,7 +914,6 @@
               >
                 宵夜
               </button>
-
 
               <button
                 type="button"
@@ -956,7 +952,6 @@
                 全部
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -965,7 +960,6 @@
               >
                 主食
               </button>
-
 
               <button
                 type="button"
@@ -976,7 +970,6 @@
                 麵飯
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -985,7 +978,6 @@
               >
                 燒肉
               </button>
-
 
               <button
                 type="button"
@@ -996,7 +988,6 @@
                 火鍋
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -1005,7 +996,6 @@
               >
                 海鮮
               </button>
-
 
               <button
                 type="button"
@@ -1016,7 +1006,6 @@
                 小吃
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -1025,7 +1014,6 @@
               >
                 甜點
               </button>
-
 
               <button
                 type="button"
@@ -1036,7 +1024,6 @@
                 飲料
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -1045,7 +1032,6 @@
               >
                 咖啡
               </button>
-
 
               <button
                 type="button"
@@ -1056,7 +1042,6 @@
                 酒類
               </button>
 
-
               <button
                 type="button"
                 class="food-filter-chip"
@@ -1065,7 +1050,6 @@
               >
                 便利商店
               </button>
-
 
               <button
                 type="button"
@@ -1255,9 +1239,8 @@
 
         </div>
 
-        <!-- =================================================
-             SHOP / FOOD NAME
-        ================================================== -->
+
+        <!-- Shop -->
 
         <div class="form-group">
 
@@ -1279,6 +1262,8 @@
         </div>
 
 
+        <!-- Food Name -->
+
         <div class="form-group">
 
           <label for="foodName">
@@ -1294,9 +1279,7 @@
         </div>
 
 
-        <!-- =================================================
-             MEAL / CATEGORY
-        ================================================== -->
+        <!-- Meal / Category -->
 
         <div class="grid-2">
 
@@ -1408,9 +1391,7 @@
         </div>
 
 
-        <!-- =================================================
-             RECOMMEND
-        ================================================== -->
+        <!-- Recommend -->
 
         <div class="checkbox-row food-recommend-row">
 
@@ -1426,9 +1407,7 @@
         </div>
 
 
-        <!-- =================================================
-             MONEY
-        ================================================== -->
+        <!-- Money -->
 
         <div
           class="grid-2"
@@ -1488,9 +1467,7 @@
         </div>
 
 
-        <!-- =================================================
-             RATING
-        ================================================== -->
+        <!-- Rating -->
 
         <div class="form-group">
 
@@ -1548,6 +1525,7 @@
 
         <!-- =================================================
              PHOTO
+             V2.4.0 Local-first + Private R2
         ================================================== -->
 
         <div class="form-group">
@@ -1565,7 +1543,7 @@
 
 
           <div class="food-photo-note">
-            手機可直接拍照或從相簿選取
+            手機可直接拍照或從相簿選取；照片會先保存在本機。
           </div>
 
 
@@ -1594,9 +1572,7 @@
         </div>
 
 
-        <!-- =================================================
-             NOTE
-        ================================================== -->
+        <!-- Note -->
 
         <div
           class="form-group"
@@ -1615,9 +1591,7 @@
         </div>
 
 
-        <!-- =================================================
-             FOOD → EXPENSE
-        ================================================== -->
+        <!-- Food → Expense -->
 
         <div class="checkbox-row">
 
@@ -1633,9 +1607,7 @@
         </div>
 
 
-        <!-- =================================================
-             SAVE / CANCEL
-        ================================================== -->
+        <!-- Save / Cancel -->
 
         <div class="button-row">
 
@@ -1667,8 +1639,14 @@
 
           <br>
 
-          照片 V2.2.3 先儲存在本機 IndexedDB，
-          不會同步到 D1。
+          照片採 Local-first：
+          先儲存在本機 IndexedDB。
+
+          <br>
+
+          雲端授權後同步時，
+          照片會上傳至 Private Cloudflare R2，
+          D1 只保存 photo_key。
 
         </div>
 
@@ -1681,7 +1659,11 @@
 
       <div id="foodList"></div>
 
-    </section>        
+    </section>
+
+
+<!-- ===== END PART 2/4 ===== -->
+<!-- ===== START PART 3/4 ===== -->
 
 
     <!-- ===================================================
@@ -2046,8 +2028,12 @@
       <div id="tripList"></div>
 
     </section>
+
+
     <!-- ===================================================
          SYNC PANEL
+         Travel Toolkit V2.4.0
+         Cloud Authorization + D1 + Private R2
     ==================================================== -->
 
     <section
@@ -2058,7 +2044,6 @@
 
       <!-- =================================================
            CLOUD AUTHORIZATION
-           Travel Toolkit V2.3.0
       ================================================== -->
 
       <div class="card">
@@ -2070,8 +2055,9 @@
 
         <p class="card-subtitle">
           未授權時 Travel Toolkit 仍可正常使用，
-          資料只保存在目前裝置。
-          授權成功後才會啟用 D1 雲端同步。
+          資料與照片只保存在目前裝置。
+          授權成功後可啟用 D1 資料同步，
+          美食照片則同步到 Private Cloudflare R2。
         </p>
 
 
@@ -2148,10 +2134,12 @@
           🔒 尚未授權雲端功能，目前所有資料只保存在此裝置。
         </div>
 
-      </div>      
-      
+      </div>
 
-      <!-- Auto Sync -->
+
+      <!-- =================================================
+           AUTO SYNC
+      ================================================== -->
 
       <div class="card">
 
@@ -2160,7 +2148,7 @@
           <div>
 
             <div class="sync-setting-title">
-              ☁️ 自動同步 D1
+              ☁️ 自動同步雲端
             </div>
 
 
@@ -2190,7 +2178,9 @@
       </div>
 
 
-      <!-- Manual Sync -->
+      <!-- =================================================
+           MANUAL SYNC
+      ================================================== -->
 
       <div class="card">
 
@@ -2200,7 +2190,9 @@
 
 
         <p class="card-subtitle">
-          即使自動同步關閉，也可以強制同步 Local 與 D1。
+          即使自動同步關閉，也可以手動同步 Local 與雲端。
+          一般資料同步到 D1；
+          需要同步的美食照片上傳至 Private R2。
         </p>
 
 
@@ -2209,7 +2201,7 @@
           id="manualSyncButton"
           class="btn btn-primary"
         >
-          🔄 立即同步 D1
+          🔄 立即同步雲端
         </button>
 
 
@@ -2232,7 +2224,13 @@
       </div>
 
 
-      <!-- Sync Counts -->
+<!-- ===== END PART 3/4 ===== -->
+      <!-- ===== START PART 4/4 ===== -->
+
+
+      <!-- =================================================
+           SYNC COUNTS
+      ================================================== -->
 
       <div class="card">
 
@@ -2311,7 +2309,9 @@
       </div>
 
 
-      <!-- Local Counts -->
+      <!-- =================================================
+           LOCAL COUNTS
+      ================================================== -->
 
       <div class="card">
 
@@ -2390,7 +2390,9 @@
       </div>
 
 
-      <!-- Backup -->
+      <!-- =================================================
+           BACKUP
+      ================================================== -->
 
       <div class="card">
 
@@ -2433,17 +2435,29 @@
       </div>
 
 
+      <!-- =================================================
+           APP INFO
+      ================================================== -->
+
       <div class="app-info">
 
-        Travel Toolkit V2.3.0 Modular
+        Travel Toolkit V2.4.0 Modular
 
         <br>
 
-        Worker API V2.3.0
+        Worker API V2.4.0
 
         <br>
 
-        Local-first + Cloud Authorization + Cloudflare D1
+        Local-first + Cloud Authorization + Cloudflare D1 + Private R2
+
+        <br>
+
+        資料同步：D1
+
+        <br>
+
+        美食照片：Local IndexedDB + Private R2
 
         <br>
 
@@ -2451,7 +2465,10 @@
 
       </div>
 
+
     </section>
+    <!-- END panel-sync -->
+
 
   </main>
 
@@ -2534,7 +2551,11 @@
 
 <script
   type="module"
-  src="./js/main.js?v=2.3.0"
+  src="./js/main.js?v=2.4.0"
 ></script>
+
 </body>
-</html>  
+</html>
+
+
+<!-- ===== END PART 4/4 ===== -->
