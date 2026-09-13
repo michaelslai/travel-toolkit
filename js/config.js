@@ -1,7 +1,16 @@
 /* =========================================================
-   Travel Toolkit V2.3.0 Modular
+   Travel Toolkit V2.4.0 Modular
    File: js/config.js
    Modified: 2026-09-13
+
+   【V2.4.0】
+   - APP_VERSION 升級為 2.4.0
+   - EXPECTED_API_VERSION 升級為 2.4.0
+   - 新增 Cloudflare R2 Photo API 路徑設定
+   - 新增 JPEG Photo Content-Type 設定
+   - 新增照片最大 5 MB 限制常數
+   - 保留 V2.3.0 Cloud Authorization
+   - IndexedDB schema 不變，DB_VERSION 維持 4
 
    【V2.3.0】
    - 新增 Cloud Authorization 全域設定
@@ -28,11 +37,11 @@
 ========================================================= */
 
 export const APP_VERSION =
-  "2.3.0";
+  "2.4.0";
 
 
 export const EXPECTED_API_VERSION =
-  "2.3.0";
+  "2.4.0";
 
 
 export const API_BASE =
@@ -57,7 +66,7 @@ export const CLOUD_TOKEN_STORAGE_KEY =
 
 
 /*
-  Worker V2.3.0 使用：
+  Worker V2.4.0 使用：
 
   X-Travel-Token: <token>
 */
@@ -75,6 +84,66 @@ export const CLOUD_AUTH_CHECK_PATH =
 
 
 /* =========================================================
+   R2 PHOTO
+   V2.4.0
+========================================================= */
+
+/*
+  Worker R2 狀態確認：
+
+  GET /api/r2/status
+*/
+
+export const CLOUD_R2_STATUS_PATH =
+  "/api/r2/status";
+
+
+/*
+  Photo Upload：
+
+  POST /api/photos?food_client_uid=<uuid>
+
+  Body:
+  raw JPEG binary
+*/
+
+export const CLOUD_PHOTO_UPLOAD_PATH =
+  "/api/photos";
+
+
+/*
+  Photo Read / Delete：
+
+  GET    /api/photos/:key
+  DELETE /api/photos/:key
+
+  實際路徑由 api-sync.js 組合。
+*/
+
+export const CLOUD_PHOTO_PATH_PREFIX =
+  "/api/photos/";
+
+
+/*
+  Worker V2.4.0 第一版只接受 JPEG。
+*/
+
+export const CLOUD_PHOTO_CONTENT_TYPE =
+  "image/jpeg";
+
+
+/*
+  Worker 限制最大 5 MB。
+
+  前端也使用相同限制，
+  避免把明顯過大的資料送到 Worker。
+*/
+
+export const CLOUD_PHOTO_MAX_BYTES =
+  5 * 1024 * 1024;
+
+
+/* =========================================================
    INDEXEDDB
 ========================================================= */
 
@@ -83,11 +152,18 @@ export const DB_NAME =
 
 
 /*
-  V2.3.0 只有 Cloud Authorization。
+  V2.4.0 新增的：
 
-  IndexedDB object store schema 不變，
-  因此維持版本 4，
-  避免不必要的 upgrade。
+  photo_key
+  photo_local_key
+  photo_pending_action
+  photo_old_key
+
+  都可以直接存在既有 food_records object store
+  的 JavaScript object 中。
+
+  IndexedDB object store schema 沒有變更，
+  因此 DB_VERSION 維持 4。
 */
 
 export const DB_VERSION =
