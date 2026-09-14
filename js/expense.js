@@ -1,35 +1,32 @@
+/* ===== START PART 1/4 ===== */
+
+
 /* =========================================================
-   Travel Toolkit V2.5.0 Modular
+   Travel Toolkit V2.5.1 Modular
    File: js/expense.js
    Modified: 2026-09-14
 
-   【V2.5.0 Expense Upgrade】
-   - 付款方式固定選單：
-     現金 / 信用卡 / Suica / 福岡交通卡 / PayPay
-   - 幣別只使用 TWD / JPY
-   - 新增付款人管理
-   - 預設付款人：阿宏 / 阿瑄
-   - 付款人設定儲存在 LocalStorage
-   - 舊 Expense 的付款人會自動併入付款人清單
-   - 新增全部 / 目前旅程 / 今日消費統計
-   - TWD / JPY 分開統計，不做匯率換算
-   - Expense 紀錄依日期分組
-   - 日期群組可展開 / 收合
-   - 保留 Food → Expense 關聯
-   - 保留 Expense → Food amount / currency 反向同步
-   - 不修改 Food 照片 / 評分 / 店家 / 餐點 / 備註
-   - Local-first + D1 Sync
+   【V2.5.1 Expense Summary Trip Selector】
+   - 消費統計「目前旅程」改成獨立下拉選單
+   - 新增 expenseSummaryTripSelect
+   - 查看統計不再影響新增消費表單 expenseTrip
+   - setExpenseData() 更新 trips 後同步刷新統計旅程選單
+   - 保留 Expense V2.5.0 所有功能
+   - 保留 Food ↔ Expense amount / currency 關聯
+   - 保留 Local-first + D1 Sync
    - IndexedDB schema 不變
    - D1 schema 不變
+
+   V2.5.0:
+   - 付款方式固定選單
+   - 幣別只使用 TWD / JPY
+   - 新增付款人管理
+   - 新增全部 / 旅程 / 今日統計
+   - 新增日期分組與折疊
 
    V2.2.4:
    - 強化 Expense → Food 雙向關聯
    - 反向只同步 amount / currency
-   - 優先使用 source_client_uid 尋找 Food
-   - source_client_uid 找不到時，
-     fallback 使用 source_id → food.cloud_id
-   - 不修改 Food 照片 / 評分 / 店家 / 餐點 / 備註
-   - 一般 Expense 不會更新 Food
 ========================================================= */
 
 
@@ -110,12 +107,6 @@ let expensePayers =
   [];
 
 
-/*
-   被折疊的日期。
-
-   預設全部日期展開，
-   使用者點日期標題後才加入此 Set。
-*/
 const collapsedExpenseDates =
   new Set();
 
@@ -163,6 +154,8 @@ export function initExpenseModule(
 
   renderExpensePayerManageList();
 
+  renderExpenseSummaryTripOptions();
+
   bindExpenseEvents();
 
 }
@@ -186,18 +179,20 @@ export function setExpenseData(
     [];
 
 
-  /*
-     舊資料可能有目前付款人清單不存在的名字。
-
-     自動把這些付款人加入清單，
-     避免編輯舊資料時 select 無法顯示原值。
-  */
   mergePayersFromExpenses();
 
 
   renderExpensePayerOptions();
 
   renderExpensePayerManageList();
+
+
+  /*
+     V2.5.1：
+     trips 更新後，
+     同步刷新「統計用旅程選單」。
+  */
+  renderExpenseSummaryTripOptions();
 
 }
 
@@ -285,7 +280,8 @@ function getTimezoneInfo() {
 
 
   const sign =
-    offsetMinutes >= 0
+    offsetMinutes >=
+    0
       ? "+"
       : "-";
 
@@ -425,6 +421,98 @@ function getTripName(
     trip?.name ||
     "未分類旅程"
   );
+
+}
+
+
+/* =========================================================
+   V2.5.1 SUMMARY TRIP SELECTOR
+========================================================= */
+
+function renderExpenseSummaryTripOptions() {
+
+  const select =
+    document.getElementById(
+      "expenseSummaryTripSelect"
+    );
+
+
+  if (
+    !select
+  ) {
+
+    return;
+
+  }
+
+
+  const previousValue =
+    select.value ||
+    "";
+
+
+  select.innerHTML = `
+
+    <option value="">
+      未分類旅程
+    </option>
+
+    ${trips
+      .filter(
+        trip =>
+          !trip.deleted_at
+      )
+      .map(
+        trip => `
+
+          <option
+            value="${escapeHtml(
+              trip.client_uid
+            )}"
+          >
+            ${escapeHtml(
+              trip.name ||
+              "未命名旅程"
+            )}
+          </option>
+
+        `
+      )
+      .join(
+        ""
+      )}
+
+  `;
+
+
+  const exists =
+    previousValue ===
+      "" ||
+    trips.some(
+      trip =>
+        trip.client_uid ===
+        previousValue &&
+        !trip.deleted_at
+    );
+
+
+  if (
+    exists
+  ) {
+
+    select.value =
+      previousValue;
+
+  }
+  else {
+
+    select.value =
+      "";
+
+  }
+
+
+  renderExpenseSummary();
 
 }
 
@@ -929,7 +1017,7 @@ function renderExpensePayerOptions(
 
   const previousValue =
     selectedValue !==
-    null
+      null
 
       ? selectedValue
 
@@ -1302,21 +1390,13 @@ function normalizePaymentMethod(
 }
 
 
+/* ===== END PART 1/4 ===== */
+
+/* ===== START PART 2/4 ===== */
+
+
 /* =========================================================
    FIND LINKED FOOD
-
-   優先順序：
-
-   1. source_client_uid
-      → food.client_uid
-
-   2. source_id
-      → food.cloud_id
-
-   支援：
-   - 尚未同步的 Local Food
-   - 已同步至 D1 的 Food
-   - Pull 回來的舊資料
 ========================================================= */
 
 async function findLinkedFood(
@@ -1333,11 +1413,6 @@ async function findLinkedFood(
 
   }
 
-
-  /* ---------------------------------------------------------
-     Method 1:
-     source_client_uid → client_uid
-  --------------------------------------------------------- */
 
   if (
     expenseRecord.source_client_uid
@@ -1377,11 +1452,6 @@ async function findLinkedFood(
 
   }
 
-
-  /* ---------------------------------------------------------
-     Method 2:
-     source_id → cloud_id
-  --------------------------------------------------------- */
 
   if (
     expenseRecord.source_id !==
@@ -1471,12 +1541,9 @@ async function findLinkedFood(
 /* =========================================================
    UPDATE LINKED FOOD
 
-   Expense 只允許反向同步：
-
+   只允許 Expense 回寫：
    - amount
    - currency
-
-   Food 其他欄位完全保留。
 ========================================================= */
 
 async function updateLinkedFoodFromExpense(
@@ -1637,10 +1704,6 @@ async function updateLinkedFoodFromExpense(
   return true;
 
 }
-
-/* ===== END PART 1/4 ===== */
-
-/* ===== START PART 2/4 ===== */
 
 
 /* =========================================================
@@ -1883,10 +1946,6 @@ async function saveExpense() {
     );
 
 
-  /*
-     若舊資料曾使用不在目前清單內的付款人，
-     儲存時也確保它仍存在付款人清單。
-  */
   if (
     payer &&
     !expensePayers.includes(
@@ -1977,18 +2036,6 @@ async function saveExpense() {
         .trim() ||
       null,
 
-    /*
-       保留既有來源關聯。
-
-       Food 建立的 Expense：
-       source_type
-       source_client_uid
-       source_id
-
-       一般手動 Expense：
-       維持 null。
-    */
-
     source_type:
       old?.source_type ||
       null,
@@ -2043,10 +2090,6 @@ async function saveExpense() {
   );
 
 
-  /* =====================================================
-     1. SAVE EXPENSE
-  ===================================================== */
-
   await saveAndSync(
     "expenses",
     record
@@ -2084,13 +2127,6 @@ async function saveExpense() {
     }
   );
 
-
-  /* =====================================================
-     2. EXPENSE → FOOD
-
-     只有與 Food 關聯的 Expense
-     才反向更新 amount / currency。
-  ===================================================== */
 
   let foodUpdated =
     false;
@@ -2133,10 +2169,6 @@ async function saveExpense() {
   }
 
 
-  /* =====================================================
-     3. REFRESH UI
-  ===================================================== */
-
   resetExpenseForm();
 
 
@@ -2147,10 +2179,6 @@ async function saveExpense() {
 
   hooks.requestRefresh();
 
-
-  /* =====================================================
-     4. TOAST
-  ===================================================== */
 
   if (
     record.source_type ===
@@ -2340,10 +2368,6 @@ export function editExpense(
     );
 
 
-  /*
-     舊資料付款人若尚未存在於清單，
-     先加入再指定 value。
-  */
   const oldPayer =
     normalizePayerName(
       expense.payer
@@ -2643,21 +2667,22 @@ function calculateCurrencyTotals(
 }
 
 
+/* ===== END PART 2/4 ===== */
+
+/* ===== START PART 3/4 ===== */
+
+
 /* =========================================================
-   CURRENT TRIP
-
-   優先使用消費表單目前選擇的旅程。
-
-   如果沒有選擇：
-   - 不自行猜測其他旅程
-   - 顯示「未分類旅程」統計
+   SUMMARY TRIP
+   V2.5.1：
+   統計使用獨立 expenseSummaryTripSelect
 ========================================================= */
 
-function getCurrentExpenseTripUid() {
+function getCurrentExpenseSummaryTripUid() {
 
   const select =
     document.getElementById(
-      "expenseTrip"
+      "expenseSummaryTripSelect"
     );
 
 
@@ -2677,7 +2702,7 @@ function getCurrentExpenseTripUid() {
 
 
 /* =========================================================
-   SUMMARY
+   SUMMARY VALUE
 ========================================================= */
 
 function setExpenseSummaryValue(
@@ -2709,6 +2734,10 @@ function setExpenseSummaryValue(
 
 }
 
+
+/* =========================================================
+   RENDER SUMMARY
+========================================================= */
 
 function renderExpenseSummary() {
 
@@ -2779,24 +2808,24 @@ function renderExpenseSummary() {
 
 
   /* ---------------------------------------------------------
-     CURRENT TRIP
+     SELECTED TRIP
   --------------------------------------------------------- */
 
-  const currentTripUid =
-    getCurrentExpenseTripUid();
+  const selectedTripUid =
+    getCurrentExpenseSummaryTripUid();
 
 
   const tripRecords =
     records.filter(
       expense => {
 
-        const uid =
+        const expenseTripUid =
           expense.trip_client_uid ||
           "";
 
 
-        return uid ===
-          currentTripUid;
+        return expenseTripUid ===
+          selectedTripUid;
 
       }
     );
@@ -2821,33 +2850,7 @@ function renderExpenseSummary() {
     tripTotals.JPY
   );
 
-
-  const tripName =
-    document.getElementById(
-      "expenseSummaryTripName"
-    );
-
-
-  if (
-    tripName
-  ) {
-
-    tripName.textContent =
-      currentTripUid
-
-        ? getTripName(
-            currentTripUid
-          )
-
-        : "未分類旅程";
-
-  }
-
 }
-
-
-/* ===== END PART 2/4 ===== */
-/* ===== START PART 3/4 ===== */
 
 
 /* =========================================================
@@ -3275,7 +3278,8 @@ export function renderExpenses() {
 
 
   /*
-     Summary 即使沒有紀錄也要更新。
+     即使沒有紀錄，
+     統計也要更新為 0。
   */
   renderExpenseSummary();
 
@@ -3381,10 +3385,10 @@ function toggleExpenseDate(
 
 
 /* =========================================================
-   REFRESH SUMMARY WHEN TRIP CHANGES
+   SUMMARY TRIP CHANGE
 ========================================================= */
 
-function handleExpenseTripChange() {
+function handleExpenseSummaryTripChange() {
 
   renderExpenseSummary();
 
@@ -3392,7 +3396,7 @@ function handleExpenseTripChange() {
 
 
 /* =========================================================
-   LEGACY PAYMENT / CURRENCY NOTE
+   LEGACY DATA NOTE
 
    舊資料如果曾使用：
    - CNY
@@ -3400,15 +3404,16 @@ function handleExpenseTripChange() {
    - KRW
    - 自訂付款方式
 
-   顯示舊紀錄時仍保留原值。
+   顯示舊紀錄時仍保留原資料。
 
-   但進入編輯並再次儲存時：
-   - currency 會正規化為 TWD / JPY
-   - payment_method 會限制在固定選單
+   但重新編輯並儲存時：
+   - 幣別限制為 TWD / JPY
+   - 付款方式限制為固定選單
 ========================================================= */
 
 
 /* ===== END PART 3/4 ===== */
+
 /* ===== START PART 4/4 ===== */
 
 
@@ -3464,16 +3469,16 @@ function bindExpenseEvents() {
 
 
   /* ---------------------------------------------------------
-     CURRENT TRIP SUMMARY
+     V2.5.1 SUMMARY TRIP SELECTOR
   --------------------------------------------------------- */
 
   document
     .getElementById(
-      "expenseTrip"
+      "expenseSummaryTripSelect"
     )
     ?.addEventListener(
       "change",
-      handleExpenseTripChange
+      handleExpenseSummaryTripChange
     );
 
 
@@ -3491,10 +3496,6 @@ function bindExpenseEvents() {
     );
 
 
-  /*
-     手機 / 電腦輸入付款人後，
-     可直接 Enter 新增。
-  */
   document
     .getElementById(
       "expenseNewPayer"
