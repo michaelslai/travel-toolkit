@@ -19,11 +19,19 @@
 
 
   <!-- =====================================================
-       Travel Toolkit V2.5.0 Modular
+       Travel Toolkit V2.5.1 Modular
        File: index.html
        Modified: 2026-09-14
 
-       V2.5.0 Changes:
+       V2.5.1 Changes:
+       - Expense 統計「目前旅程」改成獨立下拉選單
+       - 查看旅程統計不再影響新增消費表單
+       - 保留 Expense V2.5.0 所有功能
+       - IndexedDB schema 不變
+       - D1 schema 不變
+       - Sync core 不變
+
+       V2.5.0:
        - Expense 模組升級
        - 消費付款方式改為固定選單
        - 消費幣別只保留 TWD / JPY
@@ -33,41 +41,15 @@
        - 保留 Food ↔ Expense 金額 / 幣別關聯
        - 保留 Local-first + D1 Sync
        - 保留 Private R2 Food Photo Sync
-       - IndexedDB schema 不變
-       - D1 schema 不變
 
        V2.4.2:
        - Food Pending Delete UI Fix
-       - Auto Sync OFF 時移除照片後不再顯示舊 R2 照片
        - Food Replacement / Delete lifecycle PASS
 
        V2.4.0:
        - 新增 Cloudflare R2 美食照片同步
-       - 美食照片維持 Local-first
-       - 照片先存 IndexedDB，再同步至 Private R2
        - D1 儲存 photo_key
-       - 跨裝置使用 authenticated fetch 載入 R2 照片
-       - Header 顯示 D1 / R2 雲端狀態
-       - Sync UI 更新為 D1 + R2 雲端同步
-       - Worker API 升級至 V2.4.0
-       - 保留 Footprint / Food / Expense / Trip / Backup 功能
-       - IndexedDB schema 不變
-
-       V2.3.0:
-       - Cloud Authorization UI
-       - Cloud Token 輸入 / 驗證 / 更換 / 清除
-       - 未授權維持 Local-only
-       - 授權後使用 Cloud Sync
-       - Header 顯示 Local / Authorized 狀態
-
-       V2.2.3:
-       - Food Feature Parity
-       - Local Photo
-
-       V2.2.2:
-       - Footprint 地圖 ↔ 紀錄雙向定位
-       - Footprint 每日站點編號 / 高亮
-       - 旅程摘要 / 旅行統計 / 每日摘要
+       - 跨裝置 authenticated fetch 載入 R2 照片
   ====================================================== -->
 
 
@@ -81,7 +63,7 @@
   <!-- App CSS -->
   <link
     rel="stylesheet"
-    href="./css/app.css?v=2.5.0"
+    href="./css/app.css?v=2.5.1"
   >
 </head>
 
@@ -110,7 +92,7 @@
           id="appVersion"
           class="app-version"
         >
-          V2.5.0
+          V2.5.1
         </div>
 
       </div>
@@ -145,8 +127,6 @@
 
     </div>
 
-
-    <!-- Tabs -->
 
     <nav class="tab-nav">
 
@@ -199,19 +179,11 @@
   </header>
 
 
-  <!-- =====================================================
-       STARTUP ERROR
-  ====================================================== -->
-
   <div
     id="startupError"
     class="startup-error"
   ></div>
 
-
-  <!-- =====================================================
-       MAIN
-  ====================================================== -->
 
   <main class="main">
 
@@ -226,12 +198,8 @@
     >
 
 
-      <!-- Map -->
-
       <div id="footprintMap"></div>
 
-
-      <!-- Footprint Trip Summary -->
 
       <div class="card">
 
@@ -319,8 +287,6 @@
 
       </div>
 
-
-      <!-- Add/Edit Footprint -->
 
       <div class="card">
 
@@ -418,8 +384,6 @@
 
         </div>
 
-
-        <!-- Nearby -->
 
         <div
           id="nearbyWrap"
@@ -527,8 +491,6 @@
       </div>
 
 
-      <!-- Footprint Statistics -->
-
       <div class="card">
 
         <h2 class="card-title">
@@ -589,8 +551,6 @@
 
       </div>
 
-
-      <!-- Footprint Filters -->
 
       <div class="card">
 
@@ -677,8 +637,6 @@
       </div>
 
 
-      <!-- Footprint Timeline Actions -->
-
       <div class="footprint-timeline-actions">
 
         <button
@@ -704,6 +662,9 @@
       <div id="footprintList"></div>
 
     </section>
+
+
+<!-- ===== END PART 1/4 ===== -->
     <!-- ===== START PART 2/4 ===== -->
 
 
@@ -854,15 +815,11 @@
         </button>
 
 
-        <!-- FILTER PANEL -->
-
         <div
           id="foodFilterPanel"
           class="food-filter-panel"
         >
 
-
-          <!-- Meal -->
 
           <div class="food-filter-section">
 
@@ -943,8 +900,6 @@
 
           </div>
 
-
-          <!-- Category -->
 
           <div class="food-filter-section">
 
@@ -1080,8 +1035,6 @@
           </div>
 
 
-          <!-- Recommend -->
-
           <div class="food-filter-section">
 
             <div class="food-filter-title">
@@ -1142,8 +1095,6 @@
         >
 
 
-        <!-- Trip -->
-
         <div class="form-group">
 
           <label for="foodTrip">
@@ -1161,8 +1112,6 @@
 
         </div>
 
-
-        <!-- Date / Time -->
 
         <div class="grid-2">
 
@@ -1202,8 +1151,6 @@
         ></div>
 
 
-        <!-- GPS -->
-
         <div class="form-group">
 
           <label>
@@ -1230,8 +1177,6 @@
         </div>
 
 
-        <!-- Nearby -->
-
         <div
           id="foodNearbyWrap"
           class="food-nearby-wrap"
@@ -1255,8 +1200,6 @@
         </div>
 
 
-        <!-- Shop -->
-
         <div class="form-group">
 
           <label for="foodShopName">
@@ -1277,8 +1220,6 @@
         </div>
 
 
-        <!-- Food Name -->
-
         <div class="form-group">
 
           <label for="foodName">
@@ -1293,8 +1234,6 @@
 
         </div>
 
-
-        <!-- Meal / Category -->
 
         <div class="grid-2">
 
@@ -1406,8 +1345,6 @@
         </div>
 
 
-        <!-- Recommend -->
-
         <div class="checkbox-row food-recommend-row">
 
           <input
@@ -1421,8 +1358,6 @@
 
         </div>
 
-
-        <!-- Money -->
 
         <div
           class="grid-2"
@@ -1482,8 +1417,6 @@
         </div>
 
 
-        <!-- Rating -->
-
         <div class="form-group">
 
           <label>
@@ -1493,55 +1426,16 @@
 
           <div class="rating-row">
 
-            <button
-              type="button"
-              class="rating-star"
-              data-food-rating="1"
-            >
-              ☆
-            </button>
-
-            <button
-              type="button"
-              class="rating-star"
-              data-food-rating="2"
-            >
-              ☆
-            </button>
-
-            <button
-              type="button"
-              class="rating-star"
-              data-food-rating="3"
-            >
-              ☆
-            </button>
-
-            <button
-              type="button"
-              class="rating-star"
-              data-food-rating="4"
-            >
-              ☆
-            </button>
-
-            <button
-              type="button"
-              class="rating-star"
-              data-food-rating="5"
-            >
-              ☆
-            </button>
+            <button type="button" class="rating-star" data-food-rating="1">☆</button>
+            <button type="button" class="rating-star" data-food-rating="2">☆</button>
+            <button type="button" class="rating-star" data-food-rating="3">☆</button>
+            <button type="button" class="rating-star" data-food-rating="4">☆</button>
+            <button type="button" class="rating-star" data-food-rating="5">☆</button>
 
           </div>
 
         </div>
 
-
-        <!-- =================================================
-             PHOTO
-             V2.4.2 Local-first + Private R2
-        ================================================== -->
 
         <div class="form-group">
 
@@ -1587,8 +1481,6 @@
         </div>
 
 
-        <!-- Note -->
-
         <div
           class="form-group"
           style="margin-top:13px;"
@@ -1606,8 +1498,6 @@
         </div>
 
 
-        <!-- Food → Expense -->
-
         <div class="checkbox-row">
 
           <input
@@ -1621,8 +1511,6 @@
 
         </div>
 
-
-        <!-- Save / Cancel -->
 
         <div class="button-row">
 
@@ -1668,24 +1556,20 @@
       </div>
 
 
-      <!-- =================================================
-           FOOD RECORD LIST
-      ================================================== -->
-
       <div id="foodList"></div>
 
     </section>
 
 
 <!-- ===== END PART 2/4 ===== -->
-<!-- ===== START PART 3/4 ===== -->
+    <!-- ===== START PART 3/4 ===== -->
 
 
     <!-- ===================================================
          EXPENSE PANEL
-         Travel Toolkit V2.5.0
-         Expense Statistics + Payer Management
-         + Date Group / Collapse
+         Travel Toolkit V2.5.1
+         Expense Statistics + Independent Trip Selector
+         + Payer Management + Date Group / Collapse
     ==================================================== -->
 
     <section
@@ -1802,14 +1686,24 @@
 
 
           <div
-            id="expenseSummaryTripName"
+            class="form-group"
             style="
-              margin-bottom:8px;
-              font-size:12px;
-              color:#777;
+              margin-bottom:10px;
             "
           >
-            未分類旅程
+
+            <label for="expenseSummaryTripSelect">
+              選擇旅程
+            </label>
+
+            <select id="expenseSummaryTripSelect">
+
+              <option value="">
+                未分類旅程
+              </option>
+
+            </select>
+
           </div>
 
 
@@ -1960,8 +1854,6 @@
         >
 
 
-        <!-- Trip -->
-
         <div class="form-group">
 
           <label for="expenseTrip">
@@ -1978,8 +1870,6 @@
 
         </div>
 
-
-        <!-- Date / Time -->
 
         <div class="grid-2">
 
@@ -2012,8 +1902,6 @@
 
         </div>
 
-
-        <!-- Category -->
 
         <div class="grid-2">
 
@@ -2049,8 +1937,6 @@
         </div>
 
 
-        <!-- Title -->
-
         <div class="form-group">
 
           <label for="expenseTitle">
@@ -2065,8 +1951,6 @@
 
         </div>
 
-
-        <!-- Currency / Amount -->
 
         <div class="grid-2">
 
@@ -2110,8 +1994,6 @@
 
         </div>
 
-
-        <!-- Payment / Payer -->
 
         <div class="grid-2">
 
@@ -2244,8 +2126,6 @@
         </div>
 
 
-        <!-- Note -->
-
         <div class="form-group">
 
           <label for="expenseNote">
@@ -2259,8 +2139,6 @@
 
         </div>
 
-
-        <!-- Save / Cancel -->
 
         <div class="button-row">
 
@@ -2289,8 +2167,6 @@
 
       <!-- =================================================
            EXPENSE RECORD LIST
-           V2.5.0:
-           expense.js 會依日期產生群組及折疊
       ================================================== -->
 
       <div id="expenseList"></div>
@@ -2413,8 +2289,7 @@
 
     <!-- ===================================================
          SYNC PANEL
-         Travel Toolkit V2.5.0
-         Cloud Authorization + D1 + Private R2
+         Travel Toolkit V2.5.1
     ==================================================== -->
 
     <section
@@ -2422,10 +2297,6 @@
       class="tab-panel"
     >
 
-
-      <!-- =================================================
-           CLOUD AUTHORIZATION
-      ================================================== -->
 
       <div class="card">
 
@@ -2518,10 +2389,6 @@
       </div>
 
 
-      <!-- =================================================
-           AUTO SYNC
-      ================================================== -->
-
       <div class="card">
 
         <div class="sync-setting">
@@ -2558,10 +2425,6 @@
 
       </div>
 
-
-      <!-- =================================================
-           MANUAL SYNC
-      ================================================== -->
 
       <div class="card">
 
@@ -2796,9 +2659,7 @@
         </button>
 
 
-        <div
-          style="height:12px;"
-        ></div>
+        <div style="height:12px;"></div>
 
 
         <label for="importBackupInput">
@@ -2822,7 +2683,7 @@
 
       <div class="app-info">
 
-        Travel Toolkit V2.5.0 Modular
+        Travel Toolkit V2.5.1 Modular
 
         <br>
 
@@ -2842,8 +2703,8 @@
 
         <br>
 
-        Expense V2.5.0：
-        TWD / JPY、付款方式、付款人管理、統計、日期折疊
+        Expense V2.5.1：
+        TWD / JPY、付款方式、付款人管理、統計、日期折疊、獨立旅程統計選擇
 
         <br>
 
@@ -2937,7 +2798,7 @@
 
 <script
   type="module"
-  src="./js/main.js?v=2.5.0"
+  src="./js/main.js?v=2.5.1"
 ></script>
 
 </body>
@@ -2945,6 +2806,3 @@
 
 
 <!-- ===== END PART 4/4 ===== -->
-
-
-<!-- ===== END PART 1/4 ===== -->
