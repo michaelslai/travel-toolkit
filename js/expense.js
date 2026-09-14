@@ -1,23 +1,37 @@
 /* =========================================================
-   Travel Toolkit V2.2.4 Modular
+   Travel Toolkit V2.5.0 Modular
    File: js/expense.js
-   Modified: 2026-09-13
+   Modified: 2026-09-14
 
-   Base:
-   - V2.2.3 Expense CRUD
-   - Local-first
-   - D1 Sync via api-sync.js
+   【V2.5.0 Expense Upgrade】
+   - 付款方式固定選單：
+     現金 / 信用卡 / Suica / 福岡交通卡 / PayPay
+   - 幣別只使用 TWD / JPY
+   - 新增付款人管理
+   - 預設付款人：阿宏 / 阿瑄
+   - 付款人設定儲存在 LocalStorage
+   - 舊 Expense 的付款人會自動併入付款人清單
+   - 新增全部 / 目前旅程 / 今日消費統計
+   - TWD / JPY 分開統計，不做匯率換算
+   - Expense 紀錄依日期分組
+   - 日期群組可展開 / 收合
+   - 保留 Food → Expense 關聯
+   - 保留 Expense → Food amount / currency 反向同步
+   - 不修改 Food 照片 / 評分 / 店家 / 餐點 / 備註
+   - Local-first + D1 Sync
+   - IndexedDB schema 不變
+   - D1 schema 不變
 
-   V2.2.4 Changes:
+   V2.2.4:
    - 強化 Expense → Food 雙向關聯
    - 反向只同步 amount / currency
    - 優先使用 source_client_uid 尋找 Food
    - source_client_uid 找不到時，
      fallback 使用 source_id → food.cloud_id
    - 不修改 Food 照片 / 評分 / 店家 / 餐點 / 備註
-   - 加入 EXPENSE→FOOD debug log
    - 一般 Expense 不會更新 Food
 ========================================================= */
+
 
 import {
 
@@ -46,6 +60,41 @@ import {
 
 
 /* =========================================================
+   CONSTANTS
+========================================================= */
+
+const EXPENSE_PAYER_STORAGE_KEY =
+  "travelToolkitExpensePayers";
+
+
+const DEFAULT_EXPENSE_PAYERS = [
+
+  "阿宏",
+  "阿瑄"
+
+];
+
+
+const ALLOWED_PAYMENT_METHODS = [
+
+  "現金",
+  "信用卡",
+  "Suica",
+  "福岡交通卡",
+  "PayPay"
+
+];
+
+
+const ALLOWED_CURRENCIES = [
+
+  "TWD",
+  "JPY"
+
+];
+
+
+/* =========================================================
    MODULE STATE
 ========================================================= */
 
@@ -55,6 +104,20 @@ let expenses =
 
 let trips =
   [];
+
+
+let expensePayers =
+  [];
+
+
+/*
+   被折疊的日期。
+
+   預設全部日期展開，
+   使用者點日期標題後才加入此 Set。
+*/
+const collapsedExpenseDates =
+  new Set();
 
 
 /* =========================================================
@@ -89,11 +152,16 @@ export function initExpenseModule(
   hooks = {
 
     ...hooks,
-
     ...options
 
   };
 
+
+  loadExpensePayers();
+
+  renderExpensePayerOptions();
+
+  renderExpensePayerManageList();
 
   bindExpenseEvents();
 
@@ -116,6 +184,20 @@ export function setExpenseData(
   trips =
     data.trips ||
     [];
+
+
+  /*
+     舊資料可能有目前付款人清單不存在的名字。
+
+     自動把這些付款人加入清單，
+     避免編輯舊資料時 select 無法顯示原值。
+  */
+  mergePayersFromExpenses();
+
+
+  renderExpensePayerOptions();
+
+  renderExpensePayerManageList();
 
 }
 
@@ -203,8 +285,7 @@ function getTimezoneInfo() {
 
 
   const sign =
-    offsetMinutes >=
-    0
+    offsetMinutes >= 0
       ? "+"
       : "-";
 
@@ -415,6 +496,813 @@ function syncBadgeHtml(
 
 
 /* =========================================================
+   FORMAT AMOUNT
+========================================================= */
+
+function formatAmount(
+  amount
+) {
+
+  const value =
+    Number(
+      amount
+    );
+
+
+  if (
+    Number.isNaN(
+      value
+    )
+  ) {
+
+    return String(
+      amount ??
+      ""
+    );
+
+  }
+
+
+  return new Intl.NumberFormat()
+    .format(
+      value
+    );
+
+}
+
+
+function formatCurrencyAmount(
+  currency,
+  amount
+) {
+
+  const value =
+    formatAmount(
+      amount
+    );
+
+
+  if (
+    currency ===
+    "JPY"
+  ) {
+
+    return `¥${value}`;
+
+  }
+
+
+  return `NT$${value}`;
+
+}
+
+
+/* =========================================================
+   DATE HELPERS
+========================================================= */
+
+function getRecordLocalDate(
+  value
+) {
+
+  if (
+    !value
+  ) {
+
+    return "";
+
+  }
+
+
+  const date =
+    new Date(
+      value
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return "";
+
+  }
+
+
+  return (
+
+    date.getFullYear() +
+    "-" +
+    pad(
+      date.getMonth() +
+      1
+    ) +
+    "-" +
+    pad(
+      date.getDate()
+    )
+
+  );
+
+}
+
+
+function formatDateTitle(
+  dateKey
+) {
+
+  if (
+    !dateKey
+  ) {
+
+    return "日期不明";
+
+  }
+
+
+  const parts =
+    dateKey.split(
+      "-"
+    );
+
+
+  if (
+    parts.length !==
+    3
+  ) {
+
+    return dateKey;
+
+  }
+
+
+  return (
+    `${parts[0]} / ` +
+    `${parts[1]} / ` +
+    `${parts[2]}`
+  );
+
+}
+
+
+function formatRecordedAt(
+  value
+) {
+
+  if (
+    !value
+  ) {
+
+    return "";
+
+  }
+
+
+  const date =
+    new Date(
+      value
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return value;
+
+  }
+
+
+  return (
+
+    date.getFullYear() +
+    "/" +
+    pad(
+      date.getMonth() +
+      1
+    ) +
+    "/" +
+    pad(
+      date.getDate()
+    ) +
+    " " +
+    pad(
+      date.getHours()
+    ) +
+    ":" +
+    pad(
+      date.getMinutes()
+    )
+
+  );
+
+}
+
+
+/* =========================================================
+   PAYER MANAGEMENT
+========================================================= */
+
+function normalizePayerName(
+  value
+) {
+
+  return String(
+    value ??
+    ""
+  )
+  .trim();
+
+}
+
+
+function uniquePayers(
+  values
+) {
+
+  const result =
+    [];
+
+
+  const seen =
+    new Set();
+
+
+  for (
+    const raw of
+    values
+  ) {
+
+    const name =
+      normalizePayerName(
+        raw
+      );
+
+
+    if (
+      !name
+    ) {
+
+      continue;
+
+    }
+
+
+    if (
+      seen.has(
+        name
+      )
+    ) {
+
+      continue;
+
+    }
+
+
+    seen.add(
+      name
+    );
+
+
+    result.push(
+      name
+    );
+
+  }
+
+
+  return result;
+
+}
+
+
+function loadExpensePayers() {
+
+  let saved =
+    [];
+
+
+  try {
+
+    const text =
+      localStorage.getItem(
+        EXPENSE_PAYER_STORAGE_KEY
+      );
+
+
+    if (
+      text
+    ) {
+
+      const parsed =
+        JSON.parse(
+          text
+        );
+
+
+      if (
+        Array.isArray(
+          parsed
+        )
+      ) {
+
+        saved =
+          parsed;
+
+      }
+
+    }
+
+  }
+  catch (
+    error
+  ) {
+
+    console.warn(
+      "[EXPENSE] load payer settings failed",
+      error
+    );
+
+  }
+
+
+  expensePayers =
+    uniquePayers(
+      [
+        ...DEFAULT_EXPENSE_PAYERS,
+        ...saved
+      ]
+    );
+
+}
+
+
+function saveExpensePayers() {
+
+  try {
+
+    localStorage.setItem(
+
+      EXPENSE_PAYER_STORAGE_KEY,
+
+      JSON.stringify(
+        expensePayers
+      )
+
+    );
+
+  }
+  catch (
+    error
+  ) {
+
+    console.warn(
+      "[EXPENSE] save payer settings failed",
+      error
+    );
+
+  }
+
+}
+
+
+function mergePayersFromExpenses() {
+
+  const recordPayers =
+    expenses
+      .map(
+        item =>
+          item?.payer
+      )
+      .filter(
+        Boolean
+      );
+
+
+  const merged =
+    uniquePayers(
+      [
+        ...expensePayers,
+        ...recordPayers
+      ]
+    );
+
+
+  if (
+    merged.length !==
+    expensePayers.length
+  ) {
+
+    expensePayers =
+      merged;
+
+
+    saveExpensePayers();
+
+  }
+
+}
+
+
+function renderExpensePayerOptions(
+  selectedValue = null
+) {
+
+  const select =
+    document.getElementById(
+      "expensePayer"
+    );
+
+
+  if (
+    !select
+  ) {
+
+    return;
+
+  }
+
+
+  const previousValue =
+    selectedValue !==
+    null
+
+      ? selectedValue
+
+      : select.value;
+
+
+  select.innerHTML =
+    `
+
+      <option value="">
+        請選擇
+      </option>
+
+    ` +
+    expensePayers
+      .map(
+        payer => `
+
+          <option
+            value="${escapeHtml(
+              payer
+            )}"
+          >
+            ${escapeHtml(
+              payer
+            )}
+          </option>
+
+        `
+      )
+      .join(
+        ""
+      );
+
+
+  if (
+    previousValue &&
+    expensePayers.includes(
+      previousValue
+    )
+  ) {
+
+    select.value =
+      previousValue;
+
+  }
+  else {
+
+    select.value =
+      "";
+
+  }
+
+}
+
+
+function renderExpensePayerManageList() {
+
+  const container =
+    document.getElementById(
+      "expensePayerManageList"
+    );
+
+
+  if (
+    !container
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    !expensePayers.length
+  ) {
+
+    container.innerHTML = `
+
+      <div
+        style="
+          font-size:12px;
+          color:#777;
+        "
+      >
+        尚未建立付款人
+      </div>
+
+    `;
+
+
+    return;
+
+  }
+
+
+  container.innerHTML =
+    expensePayers
+      .map(
+        payer => `
+
+          <div
+            style="
+              display:flex;
+              align-items:center;
+              justify-content:space-between;
+              gap:10px;
+              padding:8px 0;
+              border-bottom:1px solid #e5e7eb;
+            "
+          >
+
+            <span>
+              👤 ${escapeHtml(
+                payer
+              )}
+            </span>
+
+
+            <button
+              type="button"
+              class="btn-soft-red"
+              data-action="delete-expense-payer"
+              data-payer="${escapeHtml(
+                payer
+              )}"
+              style="
+                padding:5px 9px;
+                font-size:12px;
+              "
+            >
+              刪除
+            </button>
+
+          </div>
+
+        `
+      )
+      .join(
+        ""
+      );
+
+}
+
+
+function addExpensePayer() {
+
+  const input =
+    document.getElementById(
+      "expenseNewPayer"
+    );
+
+
+  if (
+    !input
+  ) {
+
+    return;
+
+  }
+
+
+  const payer =
+    normalizePayerName(
+      input.value
+    );
+
+
+  if (
+    !payer
+  ) {
+
+    hooks.showMessage(
+      "請輸入付款人名稱",
+      "error"
+    );
+
+
+    return;
+
+  }
+
+
+  if (
+    expensePayers.includes(
+      payer
+    )
+  ) {
+
+    renderExpensePayerOptions(
+      payer
+    );
+
+
+    input.value =
+      "";
+
+
+    hooks.showToast(
+      "👤 此付款人已存在"
+    );
+
+
+    return;
+
+  }
+
+
+  expensePayers =
+    uniquePayers(
+      [
+        ...expensePayers,
+        payer
+      ]
+    );
+
+
+  saveExpensePayers();
+
+
+  renderExpensePayerOptions(
+    payer
+  );
+
+
+  renderExpensePayerManageList();
+
+
+  input.value =
+    "";
+
+
+  hooks.showToast(
+    "👤 已新增付款人：" +
+    payer
+  );
+
+}
+
+
+async function deleteExpensePayer(
+  payer
+) {
+
+  const safePayer =
+    normalizePayerName(
+      payer
+    );
+
+
+  if (
+    !safePayer
+  ) {
+
+    return;
+
+  }
+
+
+  const usedCount =
+    expenses.filter(
+      item =>
+        item.payer ===
+        safePayer
+    )
+    .length;
+
+
+  let message =
+    `確定要從付款人選單移除「${safePayer}」？`;
+
+
+  if (
+    usedCount >
+    0
+  ) {
+
+    message +=
+
+      `\n\n目前有 ${usedCount} 筆既有消費使用此付款人。` +
+      `\n移除選單不會修改既有消費紀錄。`;
+
+  }
+
+
+  const confirmed =
+    await hooks.confirmDialog(
+
+      "刪除付款人",
+
+      message
+
+    );
+
+
+  if (
+    !confirmed
+  ) {
+
+    return;
+
+  }
+
+
+  expensePayers =
+    expensePayers.filter(
+      item =>
+        item !==
+        safePayer
+    );
+
+
+  saveExpensePayers();
+
+
+  renderExpensePayerOptions();
+
+  renderExpensePayerManageList();
+
+
+  hooks.showToast(
+    "👤 已從付款人選單移除：" +
+    safePayer
+  );
+
+}
+
+
+/* =========================================================
+   VALIDATE SELECT VALUES
+========================================================= */
+
+function normalizeCurrency(
+  value
+) {
+
+  if (
+    ALLOWED_CURRENCIES.includes(
+      value
+    )
+  ) {
+
+    return value;
+
+  }
+
+
+  return "TWD";
+
+}
+
+
+function normalizePaymentMethod(
+  value
+) {
+
+  if (
+    ALLOWED_PAYMENT_METHODS.includes(
+      value
+    )
+  ) {
+
+    return value;
+
+  }
+
+
+  return "";
+
+}
+
+
+/* =========================================================
    FIND LINKED FOOD
 
    優先順序：
@@ -425,7 +1313,7 @@ function syncBadgeHtml(
    2. source_id
       → food.cloud_id
 
-   這樣可同時支援：
+   支援：
    - 尚未同步的 Local Food
    - 已同步至 D1 的 Food
    - Pull 回來的舊資料
@@ -469,6 +1357,7 @@ async function findLinkedFood(
       console.log(
         "[EXPENSE→FOOD] linked by client_uid",
         {
+
           expense_uid:
             expenseRecord.client_uid,
 
@@ -477,6 +1366,7 @@ async function findLinkedFood(
 
           food_cloud_id:
             food.cloud_id
+
         }
       );
 
@@ -529,6 +1419,7 @@ async function findLinkedFood(
       console.log(
         "[EXPENSE→FOOD] linked by cloud_id",
         {
+
           expense_uid:
             expenseRecord.client_uid,
 
@@ -540,6 +1431,7 @@ async function findLinkedFood(
 
           food_cloud_id:
             food.cloud_id
+
         }
       );
 
@@ -554,6 +1446,7 @@ async function findLinkedFood(
   console.warn(
     "[EXPENSE→FOOD] linked food not found",
     {
+
       expense_uid:
         expenseRecord.client_uid,
 
@@ -565,6 +1458,7 @@ async function findLinkedFood(
 
       source_id:
         expenseRecord.source_id
+
     }
   );
 
@@ -577,12 +1471,12 @@ async function findLinkedFood(
 /* =========================================================
    UPDATE LINKED FOOD
 
-   只允許 Expense 反向同步：
+   Expense 只允許反向同步：
 
    - amount
    - currency
 
-   其他 Food 欄位完全保留。
+   Food 其他欄位完全保留。
 ========================================================= */
 
 async function updateLinkedFoodFromExpense(
@@ -603,6 +1497,7 @@ async function updateLinkedFoodFromExpense(
   console.log(
     "[EXPENSE→FOOD] START",
     {
+
       expense_uid:
         expenseRecord.client_uid,
 
@@ -617,6 +1512,7 @@ async function updateLinkedFoodFromExpense(
 
       source_id:
         expenseRecord.source_id
+
     }
   );
 
@@ -643,8 +1539,10 @@ async function updateLinkedFoodFromExpense(
     console.warn(
       "[EXPENSE→FOOD] food already deleted",
       {
+
         food_uid:
           linkedFood.client_uid
+
       }
     );
 
@@ -673,6 +1571,7 @@ async function updateLinkedFoodFromExpense(
   console.log(
     "[EXPENSE→FOOD] BEFORE SAVE",
     {
+
       food_uid:
         foodRecord.client_uid,
 
@@ -692,6 +1591,7 @@ async function updateLinkedFoodFromExpense(
         linkedFood.photo_local
           ?.length ||
         0
+
     }
   );
 
@@ -712,6 +1612,7 @@ async function updateLinkedFoodFromExpense(
   console.log(
     "[EXPENSE→FOOD] AFTER SAVE",
     {
+
       food_uid:
         savedFood?.client_uid,
 
@@ -728,6 +1629,7 @@ async function updateLinkedFoodFromExpense(
         savedFood?.photo_local
           ?.length ||
         0
+
     }
   );
 
@@ -735,6 +1637,11 @@ async function updateLinkedFoodFromExpense(
   return true;
 
 }
+
+/* ===== END PART 1/4 ===== */
+
+/* ===== START PART 2/4 ===== */
+
 
 /* =========================================================
    RESET FORM
@@ -814,12 +1721,9 @@ export function resetExpenseForm() {
     "";
 
 
-  document
-    .getElementById(
-      "expensePayer"
-    )
-    .value =
-    "";
+  renderExpensePayerOptions(
+    ""
+  );
 
 
   document
@@ -886,6 +1790,7 @@ async function saveExpense() {
       "error"
     );
 
+
     return;
 
   }
@@ -895,13 +1800,16 @@ async function saveExpense() {
     !amountText ||
     Number.isNaN(
       amount
-    )
+    ) ||
+    amount <
+      0
   ) {
 
     hooks.showMessage(
       "請輸入正確金額",
       "error"
     );
+
 
     return;
 
@@ -943,6 +1851,61 @@ async function saveExpense() {
 
   const timezoneInfo =
     getTimezoneInfo();
+
+
+  const currency =
+    normalizeCurrency(
+      document
+        .getElementById(
+          "expenseCurrency"
+        )
+        .value
+    );
+
+
+  const paymentMethod =
+    normalizePaymentMethod(
+      document
+        .getElementById(
+          "expensePaymentMethod"
+        )
+        .value
+    );
+
+
+  const payer =
+    normalizePayerName(
+      document
+        .getElementById(
+          "expensePayer"
+        )
+        .value
+    );
+
+
+  /*
+     若舊資料曾使用不在目前清單內的付款人，
+     儲存時也確保它仍存在付款人清單。
+  */
+  if (
+    payer &&
+    !expensePayers.includes(
+      payer
+    )
+  ) {
+
+    expensePayers =
+      uniquePayers(
+        [
+          ...expensePayers,
+          payer
+        ]
+      );
+
+
+    saveExpensePayers();
+
+  }
 
 
   const record = {
@@ -995,30 +1958,14 @@ async function saveExpense() {
 
     amount,
 
-    currency:
-      document
-        .getElementById(
-          "expenseCurrency"
-        )
-        .value ||
-      "TWD",
+    currency,
 
     payment_method:
-      document
-        .getElementById(
-          "expensePaymentMethod"
-        )
-        .value
-        .trim() ||
+      paymentMethod ||
       null,
 
     payer:
-      document
-        .getElementById(
-          "expensePayer"
-        )
-        .value
-        .trim() ||
+      payer ||
       null,
 
     note:
@@ -1031,8 +1978,15 @@ async function saveExpense() {
       null,
 
     /*
-      保留既有來源關聯。
-      一般手動 Expense 則維持 null。
+       保留既有來源關聯。
+
+       Food 建立的 Expense：
+       source_type
+       source_client_uid
+       source_id
+
+       一般手動 Expense：
+       維持 null。
     */
 
     source_type:
@@ -1056,6 +2010,7 @@ async function saveExpense() {
   console.log(
     "[EXPENSE SAVE] BEFORE",
     {
+
       editingUid,
 
       is_edit:
@@ -1076,7 +2031,14 @@ async function saveExpense() {
         record.amount,
 
       currency:
-        record.currency
+        record.currency,
+
+      payment_method:
+        record.payment_method,
+
+      payer:
+        record.payer
+
     }
   );
 
@@ -1094,6 +2056,7 @@ async function saveExpense() {
   console.log(
     "[EXPENSE SAVE] EXPENSE SAVED",
     {
+
       expense_uid:
         record.client_uid,
 
@@ -1103,6 +2066,12 @@ async function saveExpense() {
       currency:
         record.currency,
 
+      payment_method:
+        record.payment_method,
+
+      payer:
+        record.payer,
+
       source_type:
         record.source_type,
 
@@ -1111,6 +2080,7 @@ async function saveExpense() {
 
       source_id:
         record.source_id
+
     }
   );
 
@@ -1118,8 +2088,8 @@ async function saveExpense() {
   /* =====================================================
      2. EXPENSE → FOOD
 
-     只有已經與 Food 關聯的 Expense
-     才做反向更新。
+     只有與 Food 關聯的 Expense
+     才反向更新 amount / currency。
   ===================================================== */
 
   let foodUpdated =
@@ -1168,6 +2138,11 @@ async function saveExpense() {
   ===================================================== */
 
   resetExpenseForm();
+
+
+  renderExpensePayerOptions();
+
+  renderExpensePayerManageList();
 
 
   hooks.requestRefresh();
@@ -1350,8 +2325,9 @@ export function editExpense(
       "expenseCurrency"
     )
     .value =
-    expense.currency ||
-    "TWD";
+    normalizeCurrency(
+      expense.currency
+    );
 
 
   document
@@ -1359,17 +2335,48 @@ export function editExpense(
       "expensePaymentMethod"
     )
     .value =
-    expense.payment_method ||
-    "";
+    normalizePaymentMethod(
+      expense.payment_method
+    );
 
 
-  document
-    .getElementById(
-      "expensePayer"
+  /*
+     舊資料付款人若尚未存在於清單，
+     先加入再指定 value。
+  */
+  const oldPayer =
+    normalizePayerName(
+      expense.payer
+    );
+
+
+  if (
+    oldPayer &&
+    !expensePayers.includes(
+      oldPayer
     )
-    .value =
-    expense.payer ||
-    "";
+  ) {
+
+    expensePayers =
+      uniquePayers(
+        [
+          ...expensePayers,
+          oldPayer
+        ]
+      );
+
+
+    saveExpensePayers();
+
+  }
+
+
+  renderExpensePayerOptions(
+    oldPayer
+  );
+
+
+  renderExpensePayerManageList();
 
 
   document
@@ -1399,15 +2406,19 @@ export function editExpense(
 
   window.scrollTo(
     {
+
       top:
         0,
 
       behavior:
         "smooth"
+
     }
   );
 
 }
+
+
 /* =========================================================
    DELETE
 ========================================================= */
@@ -1479,6 +2490,10 @@ export async function deleteExpense(
 function getDisplayExpenses() {
 
   return expenses
+    .filter(
+      item =>
+        !item.deleted_at
+    )
     .slice()
     .sort(
       (
@@ -1500,15 +2515,154 @@ function getDisplayExpenses() {
 
 
 /* =========================================================
-   FORMAT DATE
+   GROUP BY DATE
 ========================================================= */
 
-function formatRecordedAt(
-  value
+function groupExpensesByDate(
+  records
 ) {
 
+  const groups =
+    new Map();
+
+
+  for (
+    const expense of
+    records
+  ) {
+
+    const dateKey =
+      getRecordLocalDate(
+        expense.recorded_at
+      ) ||
+      "unknown";
+
+
+    if (
+      !groups.has(
+        dateKey
+      )
+    ) {
+
+      groups.set(
+        dateKey,
+        []
+      );
+
+    }
+
+
+    groups
+      .get(
+        dateKey
+      )
+      .push(
+        expense
+      );
+
+  }
+
+
+  return Array.from(
+    groups.entries()
+  );
+
+}
+
+
+/* =========================================================
+   CURRENCY TOTAL
+========================================================= */
+
+function calculateCurrencyTotals(
+  records
+) {
+
+  let twd =
+    0;
+
+
+  let jpy =
+    0;
+
+
+  for (
+    const expense of
+    records
+  ) {
+
+    const amount =
+      Number(
+        expense.amount
+      );
+
+
+    if (
+      Number.isNaN(
+        amount
+      )
+    ) {
+
+      continue;
+
+    }
+
+
+    if (
+      expense.currency ===
+      "JPY"
+    ) {
+
+      jpy +=
+        amount;
+
+    }
+    else if (
+      expense.currency ===
+      "TWD"
+    ) {
+
+      twd +=
+        amount;
+
+    }
+
+  }
+
+
+  return {
+
+    TWD:
+      twd,
+
+    JPY:
+      jpy
+
+  };
+
+}
+
+
+/* =========================================================
+   CURRENT TRIP
+
+   優先使用消費表單目前選擇的旅程。
+
+   如果沒有選擇：
+   - 不自行猜測其他旅程
+   - 顯示「未分類旅程」統計
+========================================================= */
+
+function getCurrentExpenseTripUid() {
+
+  const select =
+    document.getElementById(
+      "expenseTrip"
+    );
+
+
   if (
-    !value
+    !select
   ) {
 
     return "";
@@ -1516,84 +2670,600 @@ function formatRecordedAt(
   }
 
 
-  const date =
-    new Date(
-      value
+  return select.value ||
+    "";
+
+}
+
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+function setExpenseSummaryValue(
+  elementId,
+  currency,
+  value
+) {
+
+  const element =
+    document.getElementById(
+      elementId
     );
 
 
   if (
-    Number.isNaN(
-      date.getTime()
-    )
+    !element
   ) {
 
-    return value;
+    return;
 
   }
 
 
-  return (
+  element.textContent =
+    formatCurrencyAmount(
+      currency,
+      value
+    );
 
-    date.getFullYear() +
-    "/" +
-    pad(
-      date.getMonth() +
-      1
-    ) +
-    "/" +
-    pad(
-      date.getDate()
-    ) +
-    " " +
-    pad(
-      date.getHours()
-    ) +
-    ":" +
-    pad(
-      date.getMinutes()
-    )
+}
 
+
+function renderExpenseSummary() {
+
+  const records =
+    getDisplayExpenses();
+
+
+  /* ---------------------------------------------------------
+     ALL
+  --------------------------------------------------------- */
+
+  const allTotals =
+    calculateCurrencyTotals(
+      records
+    );
+
+
+  setExpenseSummaryValue(
+    "expenseSummaryAllTWD",
+    "TWD",
+    allTotals.TWD
+  );
+
+
+  setExpenseSummaryValue(
+    "expenseSummaryAllJPY",
+    "JPY",
+    allTotals.JPY
+  );
+
+
+  /* ---------------------------------------------------------
+     TODAY
+  --------------------------------------------------------- */
+
+  const today =
+    getLocalDate();
+
+
+  const todayRecords =
+    records.filter(
+      expense =>
+        getRecordLocalDate(
+          expense.recorded_at
+        ) ===
+        today
+    );
+
+
+  const todayTotals =
+    calculateCurrencyTotals(
+      todayRecords
+    );
+
+
+  setExpenseSummaryValue(
+    "expenseSummaryTodayTWD",
+    "TWD",
+    todayTotals.TWD
+  );
+
+
+  setExpenseSummaryValue(
+    "expenseSummaryTodayJPY",
+    "JPY",
+    todayTotals.JPY
+  );
+
+
+  /* ---------------------------------------------------------
+     CURRENT TRIP
+  --------------------------------------------------------- */
+
+  const currentTripUid =
+    getCurrentExpenseTripUid();
+
+
+  const tripRecords =
+    records.filter(
+      expense => {
+
+        const uid =
+          expense.trip_client_uid ||
+          "";
+
+
+        return uid ===
+          currentTripUid;
+
+      }
+    );
+
+
+  const tripTotals =
+    calculateCurrencyTotals(
+      tripRecords
+    );
+
+
+  setExpenseSummaryValue(
+    "expenseSummaryTripTWD",
+    "TWD",
+    tripTotals.TWD
+  );
+
+
+  setExpenseSummaryValue(
+    "expenseSummaryTripJPY",
+    "JPY",
+    tripTotals.JPY
+  );
+
+
+  const tripName =
+    document.getElementById(
+      "expenseSummaryTripName"
+    );
+
+
+  if (
+    tripName
+  ) {
+
+    tripName.textContent =
+      currentTripUid
+
+        ? getTripName(
+            currentTripUid
+          )
+
+        : "未分類旅程";
+
+  }
+
+}
+
+
+/* ===== END PART 2/4 ===== */
+/* ===== START PART 3/4 ===== */
+
+
+/* =========================================================
+   DAILY SUMMARY HTML
+========================================================= */
+
+function expenseDateSummaryHtml(
+  records
+) {
+
+  const totals =
+    calculateCurrencyTotals(
+      records
+    );
+
+
+  const parts =
+    [];
+
+
+  parts.push(
+    `${records.length} 筆`
+  );
+
+
+  if (
+    totals.TWD !==
+    0
+  ) {
+
+    parts.push(
+      formatCurrencyAmount(
+        "TWD",
+        totals.TWD
+      )
+    );
+
+  }
+
+
+  if (
+    totals.JPY !==
+    0
+  ) {
+
+    parts.push(
+      formatCurrencyAmount(
+        "JPY",
+        totals.JPY
+      )
+    );
+
+  }
+
+
+  if (
+    totals.TWD ===
+      0 &&
+    totals.JPY ===
+      0
+  ) {
+
+    parts.push(
+      "NT$0"
+    );
+
+    parts.push(
+      "¥0"
+    );
+
+  }
+
+
+  return parts.join(
+    " · "
   );
 
 }
 
 
 /* =========================================================
-   FORMAT AMOUNT
+   EXPENSE RECORD HTML
 ========================================================= */
 
-function formatAmount(
-  amount
+function expenseRecordHtml(
+  expense
 ) {
 
-  const value =
-    Number(
-      amount
-    );
+  return `
+
+    <div
+      class="record"
+      data-expense-uid="${escapeHtml(
+        expense.client_uid
+      )}"
+    >
+
+      <div class="record-title">
+
+        💰
+
+        ${escapeHtml(
+          expense.title ||
+          "未命名消費"
+        )}
+
+        ${syncBadgeHtml(
+          expense.sync_status
+        )}
+
+      </div>
 
 
-  if (
-    Number.isNaN(
-      value
-    )
-  ) {
+      <div class="record-meta">
 
-    return amount;
+        🧳
+        ${escapeHtml(
+          getTripName(
+            expense.trip_client_uid
+          )
+        )}
 
-  }
+        <br>
+
+        🕒
+        ${escapeHtml(
+          formatRecordedAt(
+            expense.recorded_at
+          )
+        )}
+
+        <br>
+
+        ${
+          expense.category
+
+            ? "📂 " +
+              escapeHtml(
+                expense.category
+              )
+
+            : ""
+        }
+
+        ${
+          expense.subcategory
+
+            ? " / " +
+              escapeHtml(
+                expense.subcategory
+              )
+
+            : ""
+        }
+
+      </div>
 
 
-  return new Intl.NumberFormat()
-    .format(
-      value
-    );
+      <div
+        class="record-amount"
+        style="
+          font-size:18px;
+          font-weight:700;
+          margin-top:8px;
+        "
+      >
+
+        ${escapeHtml(
+          formatCurrencyAmount(
+            expense.currency,
+            expense.amount
+          )
+        )}
+
+      </div>
+
+
+      ${
+        expense.payment_method ||
+        expense.payer
+
+          ? `
+
+              <div class="record-meta">
+
+                ${
+                  expense.payment_method
+
+                    ? "💳 " +
+                      escapeHtml(
+                        expense.payment_method
+                      )
+
+                    : ""
+                }
+
+                ${
+                  expense.payer
+
+                    ? "　👤 " +
+                      escapeHtml(
+                        expense.payer
+                      )
+
+                    : ""
+                }
+
+              </div>
+
+            `
+
+          : ""
+      }
+
+
+      ${
+        expense.source_type ===
+        "food"
+
+          ? `
+
+              <div class="record-meta">
+                🍜 由美食紀錄建立
+              </div>
+
+            `
+
+          : ""
+      }
+
+
+      ${
+        expense.note
+
+          ? `
+
+              <div class="record-note">
+
+                ${escapeHtml(
+                  expense.note
+                )}
+
+              </div>
+
+            `
+
+          : ""
+      }
+
+
+      <div class="record-actions">
+
+        <button
+          type="button"
+          class="btn-gray"
+          data-action="edit-expense"
+          data-client-uid="${escapeHtml(
+            expense.client_uid
+          )}"
+        >
+          ✏️ 編輯
+        </button>
+
+
+        <button
+          type="button"
+          class="btn-soft-red"
+          data-action="delete-expense"
+          data-client-uid="${escapeHtml(
+            expense.client_uid
+          )}"
+        >
+          🗑️ 刪除
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
 
 }
 
 
 /* =========================================================
-   RENDER
+   EXPENSE DATE GROUP HTML
+========================================================= */
+
+function expenseDateGroupHtml(
+  dateKey,
+  records
+) {
+
+  const collapsed =
+    collapsedExpenseDates.has(
+      dateKey
+    );
+
+
+  const arrow =
+    collapsed
+      ? "▶"
+      : "▼";
+
+
+  return `
+
+    <div
+      class="card"
+      data-expense-date-group="${escapeHtml(
+        dateKey
+      )}"
+      style="
+        padding:0;
+        overflow:hidden;
+      "
+    >
+
+      <button
+        type="button"
+        data-action="toggle-expense-date"
+        data-date-key="${escapeHtml(
+          dateKey
+        )}"
+        style="
+          width:100%;
+          border:0;
+          background:#f6f7f9;
+          padding:14px;
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:12px;
+          text-align:left;
+          cursor:pointer;
+        "
+      >
+
+        <div>
+
+          <div
+            style="
+              font-weight:700;
+              font-size:15px;
+            "
+          >
+            📅
+            ${escapeHtml(
+              formatDateTitle(
+                dateKey
+              )
+            )}
+          </div>
+
+
+          <div
+            style="
+              margin-top:4px;
+              color:#666;
+              font-size:12px;
+            "
+          >
+            ${escapeHtml(
+              expenseDateSummaryHtml(
+                records
+              )
+            )}
+          </div>
+
+        </div>
+
+
+        <div
+          style="
+            font-size:18px;
+            flex:0 0 auto;
+          "
+        >
+          ${arrow}
+        </div>
+
+      </button>
+
+
+      <div
+        data-expense-date-body="${escapeHtml(
+          dateKey
+        )}"
+        style="
+          display:${collapsed ? "none" : "block"};
+          padding:12px;
+        "
+      >
+
+        ${records
+          .map(
+            expense =>
+              expenseRecordHtml(
+                expense
+              )
+          )
+          .join(
+            ""
+          )}
+
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+/* =========================================================
+   RENDER EXPENSES
 ========================================================= */
 
 export function renderExpenses() {
@@ -1602,6 +3272,12 @@ export function renderExpenses() {
     document.getElementById(
       "expenseList"
     );
+
+
+  /*
+     Summary 即使沒有紀錄也要更新。
+  */
+  renderExpenseSummary();
 
 
   if (
@@ -1629,208 +3305,113 @@ export function renderExpenses() {
 
     `;
 
+
     return;
 
   }
 
 
+  const groups =
+    groupExpensesByDate(
+      records
+    );
+
+
   container.innerHTML =
-    records
+    groups
       .map(
-        expense => `
-
-          <div
-            class="record"
-            data-expense-uid="${escapeHtml(
-              expense.client_uid
-            )}"
-          >
-
-            <div class="record-title">
-
-              💰
-
-              ${escapeHtml(
-                expense.title ||
-                "未命名消費"
-              )}
-
-              ${syncBadgeHtml(
-                expense.sync_status
-              )}
-
-            </div>
-
-
-            <div class="record-meta">
-
-              🧳
-              ${escapeHtml(
-                getTripName(
-                  expense.trip_client_uid
-                )
-              )}
-
-              <br>
-
-              🕒
-              ${escapeHtml(
-                formatRecordedAt(
-                  expense.recorded_at
-                )
-              )}
-
-              <br>
-
-              ${
-                expense.category
-                  ? "📂 " +
-                    escapeHtml(
-                      expense.category
-                    )
-                  : ""
-              }
-
-              ${
-                expense.subcategory
-                  ? " / " +
-                    escapeHtml(
-                      expense.subcategory
-                    )
-                  : ""
-              }
-
-            </div>
-
-
-            <div
-              class="record-amount"
-              style="
-                font-size:18px;
-                font-weight:700;
-                margin-top:8px;
-              "
-            >
-
-              ${escapeHtml(
-                expense.currency ||
-                ""
-              )}
-
-              ${escapeHtml(
-                formatAmount(
-                  expense.amount
-                )
-              )}
-
-            </div>
-
-
-            ${
-              expense.payment_method ||
-              expense.payer
-
-                ? `
-
-                  <div class="record-meta">
-
-                    ${
-                      expense.payment_method
-                        ? "💳 " +
-                          escapeHtml(
-                            expense.payment_method
-                          )
-                        : ""
-                    }
-
-                    ${
-                      expense.payer
-                        ? "　👤 " +
-                          escapeHtml(
-                            expense.payer
-                          )
-                        : ""
-                    }
-
-                  </div>
-
-                `
-
-                : ""
-            }
-
-
-            ${
-              expense.source_type ===
-              "food"
-
-                ? `
-
-                  <div class="record-meta">
-                    🍜 由美食紀錄建立
-                  </div>
-
-                `
-
-                : ""
-            }
-
-
-            ${
-              expense.note
-
-                ? `
-
-                  <div class="record-note">
-
-                    ${escapeHtml(
-                      expense.note
-                    )}
-
-                  </div>
-
-                `
-
-                : ""
-            }
-
-
-            <div class="record-actions">
-
-              <button
-                type="button"
-                class="btn-gray"
-                data-action="edit-expense"
-                data-client-uid="${escapeHtml(
-                  expense.client_uid
-                )}"
-              >
-                ✏️ 編輯
-              </button>
-
-
-              <button
-                type="button"
-                class="btn-soft-red"
-                data-action="delete-expense"
-                data-client-uid="${escapeHtml(
-                  expense.client_uid
-                )}"
-              >
-                🗑️ 刪除
-              </button>
-
-            </div>
-
-          </div>
-
-        `
+        (
+          [
+            dateKey,
+            dateRecords
+          ]
+        ) =>
+          expenseDateGroupHtml(
+            dateKey,
+            dateRecords
+          )
       )
       .join(
         ""
       );
 
 }
+
+
+/* =========================================================
+   TOGGLE DATE GROUP
+========================================================= */
+
+function toggleExpenseDate(
+  dateKey
+) {
+
+  if (
+    !dateKey
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    collapsedExpenseDates.has(
+      dateKey
+    )
+  ) {
+
+    collapsedExpenseDates.delete(
+      dateKey
+    );
+
+  }
+  else {
+
+    collapsedExpenseDates.add(
+      dateKey
+    );
+
+  }
+
+
+  renderExpenses();
+
+}
+
+
+/* =========================================================
+   REFRESH SUMMARY WHEN TRIP CHANGES
+========================================================= */
+
+function handleExpenseTripChange() {
+
+  renderExpenseSummary();
+
+}
+
+
+/* =========================================================
+   LEGACY PAYMENT / CURRENCY NOTE
+
+   舊資料如果曾使用：
+   - CNY
+   - USD
+   - KRW
+   - 自訂付款方式
+
+   顯示舊紀錄時仍保留原值。
+
+   但進入編輯並再次儲存時：
+   - currency 會正規化為 TWD / JPY
+   - payment_method 會限制在固定選單
+========================================================= */
+
+
+/* ===== END PART 3/4 ===== */
+/* ===== START PART 4/4 ===== */
+
+
 /* =========================================================
    BIND EVENTS
 ========================================================= */
@@ -1854,6 +3435,10 @@ function bindExpenseEvents() {
     true;
 
 
+  /* ---------------------------------------------------------
+     SAVE
+  --------------------------------------------------------- */
+
   document
     .getElementById(
       "saveExpenseButton"
@@ -1864,6 +3449,10 @@ function bindExpenseEvents() {
     );
 
 
+  /* ---------------------------------------------------------
+     CANCEL EDIT
+  --------------------------------------------------------- */
+
   document
     .getElementById(
       "cancelExpenseEditButton"
@@ -1873,6 +3462,123 @@ function bindExpenseEvents() {
       resetExpenseForm
     );
 
+
+  /* ---------------------------------------------------------
+     CURRENT TRIP SUMMARY
+  --------------------------------------------------------- */
+
+  document
+    .getElementById(
+      "expenseTrip"
+    )
+    ?.addEventListener(
+      "change",
+      handleExpenseTripChange
+    );
+
+
+  /* ---------------------------------------------------------
+     ADD PAYER
+  --------------------------------------------------------- */
+
+  document
+    .getElementById(
+      "addExpensePayerButton"
+    )
+    ?.addEventListener(
+      "click",
+      addExpensePayer
+    );
+
+
+  /*
+     手機 / 電腦輸入付款人後，
+     可直接 Enter 新增。
+  */
+  document
+    .getElementById(
+      "expenseNewPayer"
+    )
+    ?.addEventListener(
+      "keydown",
+      event => {
+
+        if (
+          event.key !==
+          "Enter"
+        ) {
+
+          return;
+
+        }
+
+
+        event.preventDefault();
+
+
+        addExpensePayer();
+
+      }
+    );
+
+
+  /* ---------------------------------------------------------
+     PAYER MANAGEMENT
+  --------------------------------------------------------- */
+
+  document
+    .getElementById(
+      "expensePayerManageList"
+    )
+    ?.addEventListener(
+      "click",
+      event => {
+
+        const button =
+          event.target.closest(
+            "button[data-action]"
+          );
+
+
+        if (
+          !button
+        ) {
+
+          return;
+
+        }
+
+
+        const action =
+          button.dataset.action;
+
+
+        if (
+          action !==
+          "delete-expense-payer"
+        ) {
+
+          return;
+
+        }
+
+
+        const payer =
+          button.dataset.payer ||
+          "";
+
+
+        deleteExpensePayer(
+          payer
+        );
+
+      }
+    );
+
+
+  /* ---------------------------------------------------------
+     EXPENSE LIST
+  --------------------------------------------------------- */
 
   document
     .getElementById(
@@ -1901,29 +3607,94 @@ function bindExpenseEvents() {
           button.dataset.action;
 
 
-        const clientUid =
-          button.dataset.clientUid;
-
+        /* -----------------------------------------------------
+           EDIT
+        ----------------------------------------------------- */
 
         if (
           action ===
           "edit-expense"
         ) {
 
+          const clientUid =
+            button.dataset.clientUid;
+
+
+          if (
+            !clientUid
+          ) {
+
+            return;
+
+          }
+
+
           editExpense(
             clientUid
           );
 
+
+          return;
+
         }
 
+
+        /* -----------------------------------------------------
+           DELETE
+        ----------------------------------------------------- */
 
         if (
           action ===
           "delete-expense"
         ) {
 
+          const clientUid =
+            button.dataset.clientUid;
+
+
+          if (
+            !clientUid
+          ) {
+
+            return;
+
+          }
+
+
           deleteExpense(
             clientUid
+          );
+
+
+          return;
+
+        }
+
+
+        /* -----------------------------------------------------
+           DATE COLLAPSE
+        ----------------------------------------------------- */
+
+        if (
+          action ===
+          "toggle-expense-date"
+        ) {
+
+          const dateKey =
+            button.dataset.dateKey;
+
+
+          if (
+            !dateKey
+          ) {
+
+            return;
+
+          }
+
+
+          toggleExpenseDate(
+            dateKey
           );
 
         }
@@ -1932,3 +3703,11 @@ function bindExpenseEvents() {
     );
 
 }
+
+
+/* =========================================================
+   END
+========================================================= */
+
+
+/* ===== END PART 4/4 ===== */
