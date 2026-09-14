@@ -19,11 +19,29 @@
 
 
   <!-- =====================================================
-       Travel Toolkit V2.4.0 Modular
+       Travel Toolkit V2.5.0 Modular
        File: index.html
-       Modified: 2026-09-13
+       Modified: 2026-09-14
 
-       V2.4.0 Changes:
+       V2.5.0 Changes:
+       - Expense 模組升級
+       - 消費付款方式改為固定選單
+       - 消費幣別只保留 TWD / JPY
+       - 新增付款人選單與付款人管理 UI
+       - 新增消費統計
+       - 新增消費日期分組與折疊
+       - 保留 Food ↔ Expense 金額 / 幣別關聯
+       - 保留 Local-first + D1 Sync
+       - 保留 Private R2 Food Photo Sync
+       - IndexedDB schema 不變
+       - D1 schema 不變
+
+       V2.4.2:
+       - Food Pending Delete UI Fix
+       - Auto Sync OFF 時移除照片後不再顯示舊 R2 照片
+       - Food Replacement / Delete lifecycle PASS
+
+       V2.4.0:
        - 新增 Cloudflare R2 美食照片同步
        - 美食照片維持 Local-first
        - 照片先存 IndexedDB，再同步至 Private R2
@@ -63,7 +81,7 @@
   <!-- App CSS -->
   <link
     rel="stylesheet"
-    href="./css/app.css?v=2.4.0"
+    href="./css/app.css?v=2.5.0"
   >
 </head>
 
@@ -92,7 +110,7 @@
           id="appVersion"
           class="app-version"
         >
-          V2.4.0
+          V2.5.0
         </div>
 
       </div>
@@ -686,16 +704,12 @@
       <div id="footprintList"></div>
 
     </section>
-
-
-<!-- ===== END PART 1/4 ===== -->
-
     <!-- ===== START PART 2/4 ===== -->
 
 
     <!-- ===================================================
          FOOD PANEL
-         Travel Toolkit V2.4.0
+         Travel Toolkit V2.4.2
          Local-first + Private R2 Photo Sync
     ==================================================== -->
 
@@ -846,6 +860,7 @@
           id="foodFilterPanel"
           class="food-filter-panel"
         >
+
 
           <!-- Meal -->
 
@@ -1525,7 +1540,7 @@
 
         <!-- =================================================
              PHOTO
-             V2.4.0 Local-first + Private R2
+             V2.4.2 Local-first + Private R2
         ================================================== -->
 
         <div class="form-group">
@@ -1668,12 +1683,269 @@
 
     <!-- ===================================================
          EXPENSE PANEL
+         Travel Toolkit V2.5.0
+         Expense Statistics + Payer Management
+         + Date Group / Collapse
     ==================================================== -->
 
     <section
       id="panel-expense"
       class="tab-panel"
     >
+
+
+      <!-- =================================================
+           EXPENSE SUMMARY
+      ================================================== -->
+
+      <div class="card">
+
+        <h2 class="card-title">
+          📊 消費統計
+        </h2>
+
+
+        <!-- All -->
+
+        <div
+          style="
+            margin-bottom:14px;
+            padding:12px;
+            border-radius:12px;
+            background:#f6f7f9;
+          "
+        >
+
+          <div
+            style="
+              font-weight:700;
+              margin-bottom:8px;
+            "
+          >
+            💰 全部消費
+          </div>
+
+
+          <div class="grid-2">
+
+            <div>
+
+              <div
+                style="
+                  font-size:12px;
+                  color:#777;
+                "
+              >
+                台幣
+              </div>
+
+              <div
+                id="expenseSummaryAllTWD"
+                style="
+                  font-size:20px;
+                  font-weight:700;
+                "
+              >
+                NT$0
+              </div>
+
+            </div>
+
+
+            <div>
+
+              <div
+                style="
+                  font-size:12px;
+                  color:#777;
+                "
+              >
+                日幣
+              </div>
+
+              <div
+                id="expenseSummaryAllJPY"
+                style="
+                  font-size:20px;
+                  font-weight:700;
+                "
+              >
+                ¥0
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- Trip -->
+
+        <div
+          style="
+            margin-bottom:14px;
+            padding:12px;
+            border-radius:12px;
+            background:#f6f7f9;
+          "
+        >
+
+          <div
+            style="
+              font-weight:700;
+              margin-bottom:8px;
+            "
+          >
+            🧳 目前旅程
+          </div>
+
+
+          <div
+            id="expenseSummaryTripName"
+            style="
+              margin-bottom:8px;
+              font-size:12px;
+              color:#777;
+            "
+          >
+            未分類旅程
+          </div>
+
+
+          <div class="grid-2">
+
+            <div>
+
+              <div
+                style="
+                  font-size:12px;
+                  color:#777;
+                "
+              >
+                台幣
+              </div>
+
+              <div
+                id="expenseSummaryTripTWD"
+                style="
+                  font-size:20px;
+                  font-weight:700;
+                "
+              >
+                NT$0
+              </div>
+
+            </div>
+
+
+            <div>
+
+              <div
+                style="
+                  font-size:12px;
+                  color:#777;
+                "
+              >
+                日幣
+              </div>
+
+              <div
+                id="expenseSummaryTripJPY"
+                style="
+                  font-size:20px;
+                  font-weight:700;
+                "
+              >
+                ¥0
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- Today -->
+
+        <div
+          style="
+            padding:12px;
+            border-radius:12px;
+            background:#f6f7f9;
+          "
+        >
+
+          <div
+            style="
+              font-weight:700;
+              margin-bottom:8px;
+            "
+          >
+            📅 今日
+          </div>
+
+
+          <div class="grid-2">
+
+            <div>
+
+              <div
+                style="
+                  font-size:12px;
+                  color:#777;
+                "
+              >
+                台幣
+              </div>
+
+              <div
+                id="expenseSummaryTodayTWD"
+                style="
+                  font-size:20px;
+                  font-weight:700;
+                "
+              >
+                NT$0
+              </div>
+
+            </div>
+
+
+            <div>
+
+              <div
+                style="
+                  font-size:12px;
+                  color:#777;
+                "
+              >
+                日幣
+              </div>
+
+              <div
+                id="expenseSummaryTodayJPY"
+                style="
+                  font-size:20px;
+                  font-weight:700;
+                "
+              >
+                ¥0
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- =================================================
+           ADD / EDIT EXPENSE
+      ================================================== -->
 
       <div class="card">
 
@@ -1688,10 +1960,12 @@
         >
 
 
+        <!-- Trip -->
+
         <div class="form-group">
 
           <label for="expenseTrip">
-            旅程
+            🧳 旅程
           </label>
 
           <select id="expenseTrip">
@@ -1705,12 +1979,14 @@
         </div>
 
 
+        <!-- Date / Time -->
+
         <div class="grid-2">
 
           <div class="form-group">
 
             <label for="expenseDate">
-              日期
+              📅 日期
             </label>
 
             <input
@@ -1724,7 +2000,7 @@
           <div class="form-group">
 
             <label for="expenseTime">
-              時間
+              🕒 時間
             </label>
 
             <input
@@ -1737,12 +2013,14 @@
         </div>
 
 
+        <!-- Category -->
+
         <div class="grid-2">
 
           <div class="form-group">
 
             <label for="expenseCategory">
-              分類
+              📂 分類
             </label>
 
             <input
@@ -1757,7 +2035,7 @@
           <div class="form-group">
 
             <label for="expenseSubcategory">
-              子分類
+              🏷️ 子分類
             </label>
 
             <input
@@ -1771,10 +2049,12 @@
         </div>
 
 
+        <!-- Title -->
+
         <div class="form-group">
 
           <label for="expenseTitle">
-            消費項目
+            🧾 消費項目
           </label>
 
           <input
@@ -1786,12 +2066,14 @@
         </div>
 
 
+        <!-- Currency / Amount -->
+
         <div class="grid-2">
 
           <div class="form-group">
 
             <label for="expenseCurrency">
-              幣別
+              💱 幣別
             </label>
 
             <select id="expenseCurrency">
@@ -1804,16 +2086,65 @@
                 JPY
               </option>
 
-              <option value="CNY">
-                CNY
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="expenseAmount">
+              💰 金額
+            </label>
+
+            <input
+              type="number"
+              id="expenseAmount"
+              min="0"
+              step="0.01"
+              inputmode="decimal"
+              placeholder="0"
+            >
+
+          </div>
+
+        </div>
+
+
+        <!-- Payment / Payer -->
+
+        <div class="grid-2">
+
+          <div class="form-group">
+
+            <label for="expensePaymentMethod">
+              💳 付款方式
+            </label>
+
+            <select id="expensePaymentMethod">
+
+              <option value="">
+                請選擇
               </option>
 
-              <option value="USD">
-                USD
+              <option value="現金">
+                現金
               </option>
 
-              <option value="KRW">
-                KRW
+              <option value="信用卡">
+                信用卡
+              </option>
+
+              <option value="Suica">
+                Suica
+              </option>
+
+              <option value="福岡交通卡">
+                福岡交通卡
+              </option>
+
+              <option value="PayPay">
+                PayPay
               </option>
 
             </select>
@@ -1823,60 +2154,102 @@
 
           <div class="form-group">
 
-            <label for="expenseAmount">
-              金額
-            </label>
-
-            <input
-              type="number"
-              id="expenseAmount"
-              step="0.01"
-              placeholder="0"
-            >
-
-          </div>
-
-        </div>
-
-
-        <div class="grid-2">
-
-          <div class="form-group">
-
-            <label for="expensePaymentMethod">
-              付款方式
-            </label>
-
-            <input
-              type="text"
-              id="expensePaymentMethod"
-              placeholder="現金 / Suica / 信用卡"
-            >
-
-          </div>
-
-
-          <div class="form-group">
-
             <label for="expensePayer">
-              付款人
+              👤 付款人
             </label>
 
-            <input
-              type="text"
-              id="expensePayer"
-              placeholder="付款人"
-            >
+            <select id="expensePayer">
+
+              <option value="">
+                請選擇
+              </option>
+
+            </select>
 
           </div>
 
         </div>
 
+
+        <!-- Payer Management -->
+
+        <div
+          style="
+            margin-top:4px;
+            margin-bottom:14px;
+            padding:12px;
+            border-radius:12px;
+            background:#f6f7f9;
+          "
+        >
+
+          <div
+            style="
+              font-weight:700;
+              margin-bottom:10px;
+            "
+          >
+            👥 付款人管理
+          </div>
+
+
+          <div
+            class="grid-2"
+            style="
+              align-items:end;
+            "
+          >
+
+            <div class="form-group">
+
+              <label for="expenseNewPayer">
+                新增付款人
+              </label>
+
+              <input
+                type="text"
+                id="expenseNewPayer"
+                placeholder="例如：阿宏"
+                autocomplete="off"
+              >
+
+            </div>
+
+
+            <div class="form-group">
+
+              <button
+                type="button"
+                id="addExpensePayerButton"
+                class="btn btn-primary"
+                style="
+                  width:100%;
+                "
+              >
+                ➕ 新增付款人
+              </button>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="expensePayerManageList"
+            style="
+              margin-top:8px;
+            "
+          ></div>
+
+        </div>
+
+
+        <!-- Note -->
 
         <div class="form-group">
 
           <label for="expenseNote">
-            備註
+            📝 備註
           </label>
 
           <textarea
@@ -1886,6 +2259,8 @@
 
         </div>
 
+
+        <!-- Save / Cancel -->
 
         <div class="button-row">
 
@@ -1911,6 +2286,12 @@
 
       </div>
 
+
+      <!-- =================================================
+           EXPENSE RECORD LIST
+           V2.5.0:
+           expense.js 會依日期產生群組及折疊
+      ================================================== -->
 
       <div id="expenseList"></div>
 
@@ -2032,7 +2413,7 @@
 
     <!-- ===================================================
          SYNC PANEL
-         Travel Toolkit V2.4.0
+         Travel Toolkit V2.5.0
          Cloud Authorization + D1 + Private R2
     ==================================================== -->
 
@@ -2441,7 +2822,7 @@
 
       <div class="app-info">
 
-        Travel Toolkit V2.4.0 Modular
+        Travel Toolkit V2.5.0 Modular
 
         <br>
 
@@ -2458,6 +2839,11 @@
         <br>
 
         美食照片：Local IndexedDB + Private R2
+
+        <br>
+
+        Expense V2.5.0：
+        TWD / JPY、付款方式、付款人管理、統計、日期折疊
 
         <br>
 
@@ -2551,7 +2937,7 @@
 
 <script
   type="module"
-  src="./js/main.js?v=2.4.0"
+  src="./js/main.js?v=2.5.0"
 ></script>
 
 </body>
@@ -2559,3 +2945,6 @@
 
 
 <!-- ===== END PART 4/4 ===== -->
+
+
+<!-- ===== END PART 1/4 ===== -->
